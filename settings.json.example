@@ -1,6 +1,11 @@
 {
+    "canvasURL": "https://umjicanvas.com/api/v1",
     "token": "FEqkhRLkW14iKWby6MEftDaSjZAWrPe7XEE2jkYgZosKbPzSXSzOA4M18ThvjD09",
-    "courseID": [
-        "1308"
+    "courseCodes":[
+        "VV286",
+        "VE215",
+        "VE270",
+        "VE300",
+        "VP241"
     ]
 }

@@ -1,7 +1,6 @@
 import os
 import json
 import requests
-from pprint import pprint
 from threading import Thread
 
 
@@ -75,10 +74,23 @@ def getCourseCode(courseID):
             f"access_token={settings['token']}"
     return s.get(url).json()['course_code']
 
+def getCourseID():
+    page = 1
+    while True:
+        url = f"{BASEURL}/courses?" + \
+                f"access_token={settings['token']}&" + \
+                f"page={page}"
+        courses = s.get(url).json()
+        if not courses:
+            break
+        for course in courses:
+            if course.get('course_code') in settings['courseCodes']:
+                courseCode[course['id']] = course['course_code']
+        page += 1
 
 def syncFiles(courseID):
     global totalCount
-    courseCode[courseID] = getCourseCode(courseID)
+    # courseCode[courseID] = getCourseCode(courseID)
     folders, files = getCourseFiles(courseID)
     createFolders(courseID, folders)
     for fileName, fileUrl in files.items():
@@ -93,12 +105,14 @@ s = requests.Session()
 state = 0
 totalCount = 0
 courseCode = {}
-BASEURL = "https://umjicanvas.com/api/v1"
 
 if __name__ == "__main__":
     settings = load_json("./settings.json")
-    for courseID in settings['courseID']:
+    BASEURL = settings['canvasURL']
+    getCourseID()
+    for courseID in courseCode.keys():
         syncFiles(courseID)
+    print("Found {totalCount} new files! Start to download")
     while state != totalCount:
         try:
             print("\r{:5d}/{:5d}  Downloading...".format(state, totalCount),
