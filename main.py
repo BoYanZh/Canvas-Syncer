@@ -14,7 +14,19 @@ def load_json(file_name):
         return None
 
 
+def createFolders(courseID):
+    folderList = getCourseFolders(courseID)
+    for folder in folderList:
+        path = f"./{courseID}{folder}"
+        if not os.path.exists(path):
+            os.makedirs(path)
+
+
 def getCourseFolders(courseID):
+    return [folder for folder in getCourseFoldersWithID(courseID).values()]
+
+
+def getCourseFoldersWithID(courseID):
     res = {}
     page = 1
     while True:
@@ -26,12 +38,14 @@ def getCourseFolders(courseID):
             break
         for folder in folders:
             res[folder['id']] = folder['full_name'].replace("course files", "")
+            if not res[folder['id']]:
+                res[folder['id']] = '/'
         page += 1
     return res
 
 
 def getCourseFiles(courseID):
-    folders, res = getCourseFolders(courseID), {}
+    folders, res = getCourseFoldersWithID(courseID), {}
     page = 1
     while True:
         url = f"{BASEURL}/courses/{courseID}/files?" + \
@@ -53,4 +67,14 @@ BASEURL = "https://umjicanvas.com/api/v1"
 if __name__ == "__main__":
     settings = load_json("./settings.json")
     for courseID in settings['courseID']:
-        pprint(getCourseFiles(courseID))
+        # createFolders(courseID)
+        files = getCourseFiles(courseID)
+        print(files)
+        break
+        for fileName in files:
+            pass
+            # path = f"./{courseID}{folder}"
+            # with open(fileName, 'wb') as fd:
+            #     for chunk in r.iter_content(512):
+            #         fd.write(chunk)
+            # break
