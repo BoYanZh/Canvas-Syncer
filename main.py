@@ -2,6 +2,7 @@ import os
 import json
 import requests
 from pprint import pprint
+from threading import Thread
 
 
 def load_json(file_name):
@@ -14,10 +15,9 @@ def load_json(file_name):
         return None
 
 
-def createFolders(courseID):
-    folderList = getCourseFolders(courseID)
-    for folder in folderList:
-        path = f"./{courseID}{folder}"
+def createFolders(courseID, folders):
+    for folder in folders.values():
+        path = f"./{courseCode[courseID]}{folder}"
         if not os.path.exists(path):
             os.makedirs(path)
 
@@ -58,23 +58,51 @@ def getCourseFiles(courseID):
             path = f"{folders[f['folder_id']]}/{f['display_name']}"
             res[path] = f["url"]
         page += 1
-    return res
+    return folders, res
+
+
+def downloadFile(src, dst):
+    global state
+    r = s.get(src, stream=True)
+    with open(dst, 'wb') as fd:
+        for chunk in r.iter_content(512):
+            fd.write(chunk)
+    state += 1
+
+
+def getCourseCode(courseID):
+    url = f"{BASEURL}/courses/{courseID}?" + \
+            f"access_token={settings['token']}"
+    return s.get(url).json()['course_code']
+
+
+def syncFiles(courseID):
+    global totalCount
+    courseCode[courseID] = getCourseCode(courseID)
+    folders, files = getCourseFiles(courseID)
+    createFolders(courseID, folders)
+    for fileName, fileUrl in files.items():
+        path = f"./{courseCode[courseID]}{fileName}"
+        if os.path.exists(path):
+            continue
+        Thread(target=downloadFile, args=(fileUrl, path), daemon=True).start()
+        totalCount += 1
 
 
 s = requests.Session()
+state = 0
+totalCount = 0
+courseCode = {}
 BASEURL = "https://umjicanvas.com/api/v1"
 
 if __name__ == "__main__":
     settings = load_json("./settings.json")
     for courseID in settings['courseID']:
-        # createFolders(courseID)
-        files = getCourseFiles(courseID)
-        print(files)
-        break
-        for fileName in files:
-            pass
-            # path = f"./{courseID}{folder}"
-            # with open(fileName, 'wb') as fd:
-            #     for chunk in r.iter_content(512):
-            #         fd.write(chunk)
-            # break
+        syncFiles(courseID)
+    while state != totalCount:
+        try:
+            print("\r{:5d}/{:5d}  Downloading...".format(state, totalCount),
+                  end='')
+        except KeyboardInterrupt:
+            break
+    print("\r{:5d}/{:5d} Finish!        ".format(state, totalCount))
