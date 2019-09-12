@@ -7,6 +7,7 @@ A script that let you sync your local files with canvas.
 ```bash
 git clone git@github.com:BoYanZh/Canvas-File-Syncer.git
 cd Canvas-File-Syncer
+pip install -r requirements.txt
 cp settings.json.example settings.json
 vim settings.json
 python3 main.py
