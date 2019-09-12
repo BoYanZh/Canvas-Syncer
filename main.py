@@ -14,52 +14,43 @@ def load_json(file_name):
         return None
 
 
-def getRootFolders(courseID):
-    res = []
-    url = f"{BASEURL}/courses/{courseID}/folders?access_token={settings['token']}"
-    reList = s.get(url).json()
-    for item in reList:
-        if item['name'] != 'course files' and item['full_name'].count("/") <= 1:
-            res.append({'id': item['id'], 'name': item['name']})
-    return res
-
-
-def getFolders(folderID):
-    res = []
-    url = f"{BASEURL}/folders/{folderID}/folders?access_token={settings['token']}"
-    reList = s.get(url).json()
-    for item in reList:
-        if item['name'] != 'course files' and item['full_name'].count("/") <= 1:
-            res.append({'id': item['id'], 'name': item['name']})
-    return res
-
-def getFiles(folderID):
-    res = []
-    url = f"{BASEURL}/folders/{folderID}/files?access_token={settings['token']}"
-    reList = s.get(url).json()
-    for item in reList:
-        res.append({'id': item['id'], 'name': item['filename']})
-    return res
-
-def getFolderTree(courseID):
+def getCourseFolders(courseID):
     res = {}
-    rootFolders = getRootFolders(courseID)
-    res['folders'] = {folder['name']: {} for folder in rootFolders}
-    for folder in rootFolders:
-        resFolders = getFolders(folder['id'])
-        res['folders'][folder['name']]['folders'] = {folder['name']: {} for folder in resFolders}
+    page = 1
+    while True:
+        url = f"{BASEURL}/courses/{courseID}/folders?" + \
+              f"access_token={settings['token']}&" + \
+              f"page={page}"
+        folders = s.get(url).json()
+        if not folders:
+            break
+        for folder in folders:
+            res[folder['id']] = folder['full_name'].replace("course files", "")
+        page += 1
     return res
 
-def getSubFolders(folderID):
-    res = {}
-    resFolders = getFolders(folderID)
-    for folder in resFolders:
-        res['folder'] = folder['name']
+
+def getCourseFiles(courseID):
+    folders, res = getCourseFolders(courseID), {}
+    page = 1
+    while True:
+        url = f"{BASEURL}/courses/{courseID}/files?" + \
+              f"access_token={settings['token']}&" + \
+              f"page={page}"
+        files = s.get(url).json()
+        if not files:
+            break
+        for f in files:
+            path = f"{folders[f['folder_id']]}/{f['display_name']}"
+            res[path] = f["url"]
+        page += 1
     return res
+
 
 s = requests.Session()
 BASEURL = "https://umjicanvas.com/api/v1"
 
 if __name__ == "__main__":
     settings = load_json("./settings.json")
-    pprint(getFolderTree(settings['courseID'][0]))
+    for courseID in settings['courseID']:
+        pprint(getCourseFiles(courseID))
