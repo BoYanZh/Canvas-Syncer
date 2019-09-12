@@ -4,14 +4,16 @@ import requests
 from threading import Thread
 import time
 
+
 class CanvasFileSyncer:
     def __init__(self, settings_path="./settings.json"):
         self.sess = requests.Session()
         self.downloaded_cnt = 0
         self.total_cnt = 0
         self.courseCode = {}
+        print(f"Reading settings from {settings_path} ...")
         self.settings = self.load_settings(settings_path)
-        self.baseurl = self.settings['canvasURL']
+        self.baseurl = self.settings['canvasURL'] + '/api/v1'
         self.download_dir = self.settings['downloadDir']
 
         if not os.path.exists(self.download_dir):
@@ -26,17 +28,18 @@ class CanvasFileSyncer:
             print(f"load {file_name} failed")
             return None
 
-
     def createFolders(self, courseID, folders):
         for folder in folders.values():
-            path = os.path.join(self.download_dir, f"{self.courseCode[courseID]}{folder}")
+            path = os.path.join(self.download_dir,
+                                f"{self.courseCode[courseID]}{folder}")
             if not os.path.exists(path):
                 os.makedirs(path)
 
-
     def getCourseFolders(self, courseID):
-        return [folder for folder in self.getCourseFoldersWithID(courseID).values()]
-
+        return [
+            folder
+            for folder in self.getCourseFoldersWithID(courseID).values()
+        ]
 
     def getCourseFoldersWithID(self, courseID):
         res = {}
@@ -49,12 +52,12 @@ class CanvasFileSyncer:
             if not folders:
                 break
             for folder in folders:
-                res[folder['id']] = folder['full_name'].replace("course files", "")
+                res[folder['id']] = folder['full_name'].replace(
+                    "course files", "")
                 if not res[folder['id']]:
                     res[folder['id']] = '/'
             page += 1
         return res
-
 
     def getCourseFiles(self, courseID):
         folders, res = self.getCourseFoldersWithID(courseID), {}
@@ -72,14 +75,12 @@ class CanvasFileSyncer:
             page += 1
         return folders, res
 
-
     def downloadFile(self, src, dst):
         r = self.sess.get(src, stream=True)
         with open(dst, 'wb') as fd:
             for chunk in r.iter_content(512):
                 fd.write(chunk)
         self.downloaded_cnt += 1
-
 
     def getCourseCode(self, courseID):
         url = f"{self.baseurl}/courses/{courseID}?" + \
@@ -103,26 +104,38 @@ class CanvasFileSyncer:
         return res
 
     def syncFiles(self, courseID):
-        # courseCode[courseID] = getCourseCode(courseID)
         folders, files = self.getCourseFiles(courseID)
         self.createFolders(courseID, folders)
         for fileName, fileUrl in files.items():
-            path = os.path.join(self.download_dir, f"{self.courseCode[courseID]}{fileName}")
+            path = os.path.join(self.download_dir,
+                                f"{self.courseCode[courseID]}{fileName}")
             if os.path.exists(path):
                 continue
-            Thread(target=self.downloadFile, args=(fileUrl, path), daemon=True).start()
+            Thread(target=self.downloadFile, args=(fileUrl, path),
+                   daemon=True).start()
             self.total_cnt += 1
-    
+
     def sync(self):
+        print("Getting course IDs...")
         self.courseCode = self.getCourseID()
+        print(f"Get {len(self.courseCode)} available courses!")
+        print("Finding files on canvas...")
         for course_id in self.courseCode.keys():
             self.syncFiles(course_id)
-        print("Found {} new files! Start to download".format(self.total_cnt))
+        print(f"Find {self.total_cnt} new files!")
+        if not self.total_cnt:
+            print("Your local files are already up to date!")
+            return
+        print("Start to download!")
         while self.downloaded_cnt < self.total_cnt:
-            print("\r{:5d}/{:5d}  Downloading...".format(self.downloaded_cnt, self.total_cnt), end='')
+            print("\r{:5d}/{:5d}  Downloading...".format(
+                self.downloaded_cnt, self.total_cnt),
+                  end='')
             time.sleep(0.1)
-        print("\r{:5d}/{:5d} Finish!        ".format(self.downloaded_cnt, self.total_cnt))
+        print("\r{:5d}/{:5d} Finish!        ".format(self.downloaded_cnt,
+                                                     self.total_cnt))
+
 
 if __name__ == "__main__":
-    syncer = CanvasFileSyncer("./settings.json")
-    syncer.sync()
+    Syncer = CanvasFileSyncer()
+    Syncer.sync()
