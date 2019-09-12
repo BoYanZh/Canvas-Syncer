@@ -7,5 +7,6 @@
         "VE270",
         "VE300",
         "VP241"
-    ]
+    ],
+    "downloadDir":"./courses"
 }
