@@ -10,6 +10,7 @@ class CanvasFileSyncer:
         self.sess = requests.Session()
         self.downloaded_cnt = 0
         self.total_cnt = 0
+        self.download_size = 0
         self.courseCode = {}
         print(f"Reading settings from {settings_path} ...")
         self.settings = self.load_settings(settings_path)
@@ -112,11 +113,12 @@ class CanvasFileSyncer:
             if os.path.exists(path):
                 continue
             response = requests.head(fileUrl)
-            fileSize = int(int(response.headers['content-length']) / 1000000)
+            fileSize = int(response.headers['content-length']) / 1000000
             if fileSize > 150:
-                isDownload = input('Target file: %s is too big (%d MB), are you sure to download it?(Y/N) ' % (fileName, fileSize))
+                isDownload = input('Target file: %s is too big (%.1fMB), are you sure to download it?(Y/N) ' % (fileName, round(fileSize, 1)))
                 if isDownload != 'y' or isDownload != 'Y':
                     continue
+            self.download_size += fileSize
             Thread(target=self.downloadFile, args=(fileUrl, path),
                    daemon=True).start()
             self.total_cnt += 1
@@ -132,7 +134,7 @@ class CanvasFileSyncer:
         if not self.total_cnt:
             print("Your local files are already up to date!")
             return
-        print("Start to download!")
+        print("Start to download! \nDownload Size: %.1fMB" %(round(self.download_size, 1)))
         while self.downloaded_cnt < self.total_cnt:
             print("\r{:5d}/{:5d}  Downloading...".format(
                 self.downloaded_cnt, self.total_cnt),
