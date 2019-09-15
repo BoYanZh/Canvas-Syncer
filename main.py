@@ -3,7 +3,6 @@ import json
 import requests
 from threading import Thread
 import time
-import urllib
 
 
 class CanvasFileSyncer:
@@ -112,7 +111,7 @@ class CanvasFileSyncer:
                                 f"{self.courseCode[courseID]}{fileName}")
             if os.path.exists(path):
                 continue
-            response = urllib.request.urlopen(fileUrl)
+            response = requests.head(fileUrl)
             fileSize = int(int(response.headers['content-length']) / 1000000)
             if fileSize > 150:
                 print('Traget file:', fileName, 'is too big (%d MB), are you sure to download it?(Y/N) ' %(fileSize))
