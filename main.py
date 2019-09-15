@@ -114,8 +114,8 @@ class CanvasFileSyncer:
             response = requests.head(fileUrl)
             fileSize = int(int(response.headers['content-length']) / 1000000)
             if fileSize > 150:
-                print('Traget file:', fileName, 'is too big (%d MB), are you sure to download it?(Y/N) ' %(fileSize))
-                if input() == "n" or input == 'N':
+                isDownload = input('Traget file: %s is too big (%d MB), are you sure to download it?(Y/N) ' % (fileName, fileSize))
+                if isDownload != 'y' or isDownload != 'Y':
                     continue
             Thread(target=self.downloadFile, args=(fileUrl, path),
                    daemon=True).start()
