@@ -117,6 +117,8 @@ class CanvasFileSyncer:
             if fileSize > 150:
                 isDownload = input('Target file: %s is too big (%.1fMB), are you sure to download it?(Y/N) ' % (fileName, round(fileSize, 1)))
                 if isDownload != 'y' or isDownload != 'Y':
+                    print('Creating empty file as scapegoat')
+                    open(path, 'w')
                     continue
             self.download_size += fileSize
             Thread(target=self.downloadFile, args=(fileUrl, path),
