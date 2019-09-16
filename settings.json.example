@@ -8,5 +8,6 @@
         "VE300",
         "VP241"
     ],
-    "downloadDir":"./courses"
+    "downloadDir":"./courses",
+    "filesizeThresh":150
 }

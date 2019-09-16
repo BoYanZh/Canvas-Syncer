@@ -16,6 +16,7 @@ class CanvasSyncer:
         self.settings = self.load_settings(settings_path)
         self.baseurl = self.settings['canvasURL'] + '/api/v1'
         self.download_dir = self.settings['downloadDir']
+        self.filesize_thresh = self.settings['filesizeThresh']
 
         if not os.path.exists(self.download_dir):
             os.mkdir(self.download_dir)
@@ -23,11 +24,7 @@ class CanvasSyncer:
     def load_settings(self, file_name):
         file_path = os.path.join(
             os.path.split(os.path.realpath(__file__))[0], file_name)
-        try:
-            return json.load(open(file_path, 'r', encoding='UTF-8'))
-        except:
-            print(f"load {file_name} failed")
-            return None
+        return json.load(open(file_path, 'r', encoding='UTF-8'))
 
     def createFolders(self, courseID, folders):
         for folder in folders.values():
@@ -112,16 +109,16 @@ class CanvasSyncer:
                                 f"{self.courseCode[courseID]}{fileName}")
             if os.path.exists(path):
                 continue
-            print(f"{self.courseCode[courseID]}{fileName}")
             response = requests.head(fileUrl)
             fileSize = int(response.headers['content-length']) >> 20
-            if fileSize > 150:
+            if fileSize > self.filesize_thresh:
                 isDownload = input('Target file: %s is too big (%.1fMB), are you sure to download it?(Y/N) ' % (fileName, round(fileSize, 1)))
                 if isDownload != 'y' or isDownload != 'Y':
                     print('Creating empty file as scapegoat')
-                    open(path, 'w')
+                    open(path, 'w').close()
                     continue
             self.download_size += fileSize
+            print(f"{self.courseCode[courseID]}{fileName} ({round(fileSize, 2)}MB)")
             Thread(target=self.downloadFile, args=(fileUrl, path),
                    daemon=True).start()
             self.total_cnt += 1
