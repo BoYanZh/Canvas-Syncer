@@ -34,13 +34,13 @@ class CanvasSyncer:
             if not os.path.exists(path):
                 os.makedirs(path)
 
-    def getExistingFiles(self, courseID, folders):
-        existing_files = []
+    def getLocalFiles(self, courseID, folders):
+        local_files = []
         for folder in folders.values():
             path = os.path.join(self.download_dir,
                                 f"{self.courseCode[courseID]}{folder}")
-            existing_files += [os.path.join(folder, f) for f in os.listdir(path) if not os.path.isdir(os.path.join(path, f))]
-        return existing_files
+            local_files += [os.path.join(folder, f) for f in os.listdir(path) if not os.path.isdir(os.path.join(path, f))]
+        return local_files
 
     def getCourseFolders(self, courseID):
         return [
@@ -113,11 +113,11 @@ class CanvasSyncer:
     def syncFiles(self, courseID):
         folders, files = self.getCourseFiles(courseID)
         self.createFolders(courseID, folders)
-        existing_files = [f.replace('\\', '/').replace('//', '/') for f in self.getExistingFiles(courseID, folders)]
+        local_files = [f.replace('\\', '/').replace('//', '/') for f in self.getLocalFiles(courseID, folders)]
         path = os.path.join(self.download_dir,
                             f"{self.courseCode[courseID]}")
         for fileName, fileUrl in files.items():
-            existing_files.remove(fileName.replace('\\', '/').replace('//', '/'))
+            local_files.remove(fileName.replace('\\', '/').replace('//', '/'))
             path = os.path.join(self.download_dir,
                                 f"{self.courseCode[courseID]}{fileName}")
             if os.path.exists(path):
@@ -135,11 +135,11 @@ class CanvasSyncer:
             Thread(target=self.downloadFile, args=(fileUrl, path),
                    daemon=True).start()
             self.total_cnt += 1
-        if existing_files:
+        if local_files:
             if not self.exist_header_printed:
                 self.exist_header_printed = True
                 print(f"The following files do not exist on Canvas:")
-            for f in existing_files:
+            for f in local_files:
                 print(f'  {self.courseCode[courseID]}'+f)
 
     def sync(self):
