@@ -112,6 +112,7 @@ class CanvasSyncer:
                                 f"{self.courseCode[courseID]}{fileName}")
             if os.path.exists(path):
                 continue
+            print(f"{self.courseCode[courseID]}{fileName}")
             response = requests.head(fileUrl)
             fileSize = int(response.headers['content-length']) >> 20
             if fileSize > 150:
