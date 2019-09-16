@@ -111,6 +111,7 @@ class CanvasFileSyncer:
                                 f"{self.courseCode[courseID]}{fileName}")
             if os.path.exists(path):
                 continue
+            print(f"{self.courseCode[courseID]}{fileName}")
             Thread(target=self.downloadFile, args=(fileUrl, path),
                    daemon=True).start()
             self.total_cnt += 1
