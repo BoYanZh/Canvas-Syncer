@@ -5,7 +5,7 @@ from threading import Thread
 import time
 
 
-class CanvasFileSyncer:
+class CanvasSyncer:
     def __init__(self, settings_path="./settings.json"):
         self.sess = requests.Session()
         self.downloaded_cnt = 0
@@ -137,5 +137,5 @@ class CanvasFileSyncer:
 
 
 if __name__ == "__main__":
-    Syncer = CanvasFileSyncer()
+    Syncer = CanvasSyncer()
     Syncer.sync()
