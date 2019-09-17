@@ -117,7 +117,8 @@ class CanvasSyncer:
         path = os.path.join(self.download_dir,
                             f"{self.courseCode[courseID]}")
         for fileName, fileUrl in files.items():
-            local_files.remove(fileName.replace('\\', '/').replace('//', '/'))
+            if fileName.replace('\\', '/').replace('//', '/') in local_files:
+                local_files.remove(fileName.replace('\\', '/').replace('//', '/'))
             path = os.path.join(self.download_dir,
                                 f"{self.courseCode[courseID]}{fileName}")
             if os.path.exists(path):
@@ -138,7 +139,7 @@ class CanvasSyncer:
         if local_files:
             if not self.exist_header_printed:
                 self.exist_header_printed = True
-                print(f"The following files do not exist on Canvas:")
+                print(f"\nThe following files do not exist on Canvas:")
             for f in local_files:
                 print(f'  {self.courseCode[courseID]}'+f)
 
