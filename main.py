@@ -20,7 +20,7 @@ class CanvasSyncer:
 
         if not os.path.exists(self.download_dir):
             os.mkdir(self.download_dir)
-        self.exist_header_printed = False
+        self.local_only_files = []
 
     def load_settings(self, file_name):
         file_path = os.path.join(
@@ -136,32 +136,39 @@ class CanvasSyncer:
             Thread(target=self.downloadFile, args=(fileUrl, path),
                    daemon=True).start()
             self.total_cnt += 1
-        if local_files:
-            if not self.exist_header_printed:
-                self.exist_header_printed = True
-                print(f"\nThe following files do not exist on Canvas:")
-            for f in local_files:
-                print(f'  {self.courseCode[courseID]}'+f)
+        for f in local_files:
+            self.local_only_files.append(f'  {self.courseCode[courseID]}'+f)
+        
+    def _sync_all_courses(self):
+        sync_threads = []
+        for course_id in self.courseCode.keys():
+            t = Thread(target=self.syncFiles, args=(course_id,), daemon=True)
+            t.start()
+            sync_threads.append(t)
+        for t in sync_threads:
+            t.join()
 
     def sync(self):
         print("Getting course IDs...")
         self.courseCode = self.getCourseID()
         print(f"Get {len(self.courseCode)} available courses!")
-        print("Finding files on canvas...")
-        for course_id in self.courseCode.keys():
-            self.syncFiles(course_id)
-        print(f"Find {self.total_cnt} new files!")
+        print("Finding files on canvas...\n")
+        self._sync_all_courses()
+        print(f"\nFind {self.total_cnt} new files!")
         if not self.total_cnt:
             print("Your local files are already up to date!")
-            return
-        print("Start to download! \nDownload Size: %.1fMB" %(round(self.download_size, 1)))
-        while self.downloaded_cnt < self.total_cnt:
-            print("\r{:5d}/{:5d}  Downloading...".format(
-                self.downloaded_cnt, self.total_cnt),
-                  end='')
-            time.sleep(0.1)
-        print("\r{:5d}/{:5d} Finish!        ".format(self.downloaded_cnt,
-                                                     self.total_cnt))
+        else:
+            print("\nStart to download! \nDownload Size: %.1fMB" %(round(self.download_size, 1)))
+            while self.downloaded_cnt < self.total_cnt:
+                print("\r{:5d}/{:5d}  Downloading...".format(
+                    self.downloaded_cnt, self.total_cnt),
+                    end='')
+                time.sleep(0.1)
+            print("\r{:5d}/{:5d} Finish!        ".format(self.downloaded_cnt,
+                                                        self.total_cnt))
+        print("\nThese files only exists locally:")
+        for f in self.local_only_files:
+            print("  " + f)
 
 
 if __name__ == "__main__":
