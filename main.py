@@ -127,7 +127,7 @@ class CanvasSyncer:
             fileSize = int(response.headers['content-length']) >> 20
             if fileSize > self.filesize_thresh:
                 isDownload = input('Target file: %s is too big (%.1fMB), are you sure to download it?(Y/N) ' % (fileName, round(fileSize, 1)))
-                if isDownload != 'y' or isDownload != 'Y':
+                if isDownload != 'y' and isDownload != 'Y':
                     print('Creating empty file as scapegoat')
                     open(path, 'w').close()
                     continue
