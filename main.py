@@ -2,6 +2,7 @@ import os
 import json
 import requests
 from threading import Thread
+import threading
 import time
 
 
@@ -12,11 +13,14 @@ class CanvasSyncer:
         self.total_cnt = 0
         self.download_size = 0
         self.courseCode = {}
-        print(f"Reading settings from {settings_path} ...")
+        print(f"\rLoading settings...", end='')
         self.settings = self.load_settings(settings_path)
+        print("\rSettings loaded!    ")
         self.baseurl = self.settings['canvasURL'] + '/api/v1'
         self.download_dir = self.settings['downloadDir']
         self.filesize_thresh = self.settings['filesizeThresh']
+        self.files = [None]
+        self.fileslock = threading.Lock()
 
         if not os.path.exists(self.download_dir):
             os.mkdir(self.download_dir)
@@ -39,7 +43,10 @@ class CanvasSyncer:
         for folder in folders.values():
             path = os.path.join(self.download_dir,
                                 f"{self.courseCode[courseID]}{folder}")
-            local_files += [os.path.join(folder, f) for f in os.listdir(path) if not os.path.isdir(os.path.join(path, f))]
+            local_files += [
+                os.path.join(folder, f) for f in os.listdir(path)
+                if not os.path.isdir(os.path.join(path, f))
+            ]
         return local_files
 
     def getCourseFolders(self, courseID):
@@ -84,10 +91,14 @@ class CanvasSyncer:
 
     def downloadFile(self, src, dst):
         r = self.sess.get(src, stream=True)
+        with self.fileslock:
+            self.files.append(dst)
         with open(dst, 'wb') as fd:
             for chunk in r.iter_content(512):
                 fd.write(chunk)
-        self.downloaded_cnt += 1
+        with self.fileslock:
+            self.files.remove(dst)
+            self.downloaded_cnt += 1
 
     def getCourseCode(self, courseID):
         url = f"{self.baseurl}/courses/{courseID}?" + \
@@ -113,12 +124,15 @@ class CanvasSyncer:
     def syncFiles(self, courseID):
         folders, files = self.getCourseFiles(courseID)
         self.createFolders(courseID, folders)
-        local_files = [f.replace('\\', '/').replace('//', '/') for f in self.getLocalFiles(courseID, folders)]
-        path = os.path.join(self.download_dir,
-                            f"{self.courseCode[courseID]}")
+        local_files = [
+            f.replace('\\', '/').replace('//', '/')
+            for f in self.getLocalFiles(courseID, folders)
+        ]
+        path = os.path.join(self.download_dir, f"{self.courseCode[courseID]}")
         for fileName, fileUrl in files.items():
             if fileName.replace('\\', '/').replace('//', '/') in local_files:
-                local_files.remove(fileName.replace('\\', '/').replace('//', '/'))
+                local_files.remove(
+                    fileName.replace('\\', '/').replace('//', '/'))
             path = os.path.join(self.download_dir,
                                 f"{self.courseCode[courseID]}{fileName}")
             if os.path.exists(path):
@@ -126,51 +140,61 @@ class CanvasSyncer:
             response = requests.head(fileUrl)
             fileSize = int(response.headers['content-length']) >> 20
             if fileSize > self.filesize_thresh:
-                isDownload = input('Target file: %s is too big (%.1fMB), are you sure to download it?(Y/N) ' % (fileName, round(fileSize, 1)))
-                if isDownload != 'y' and isDownload != 'Y':
-                    print('Creating empty file as scapegoat')
+                # isDownload = input(
+                #     'Target file: %s is too big (%.2fMB), are you sure to download it?(Y/N) '
+                #     % (fileName, round(fileSize, 2)))
+                isDownload = 'N'
+                if isDownload not in ['y', 'Y']:
+                    # print('Creating empty file as scapegoat')
                     open(path, 'w').close()
                     continue
             self.download_size += fileSize
-            print(f"{self.courseCode[courseID]}{fileName} ({round(fileSize, 2)}MB)")
+            # print(
+            #     f"{self.courseCode[courseID]}{fileName} ({round(fileSize, 2)}MB)"
+            # )
             Thread(target=self.downloadFile, args=(fileUrl, path),
                    daemon=True).start()
             self.total_cnt += 1
         for f in local_files:
-            self.local_only_files.append(f'  {self.courseCode[courseID]}'+f)
-        
+            self.local_only_files.append(f'  {self.courseCode[courseID]}' + f)
+
     def _sync_all_courses(self):
         sync_threads = []
         for course_id in self.courseCode.keys():
-            t = Thread(target=self.syncFiles, args=(course_id,), daemon=True)
+            t = Thread(target=self.syncFiles, args=(course_id, ), daemon=True)
             t.start()
             sync_threads.append(t)
-        for t in sync_threads:
-            t.join()
+        [t.join() for t in sync_threads]
 
     def sync(self):
-        print("Getting course IDs...")
+        print("\rGetting course IDs...", end='')
         self.courseCode = self.getCourseID()
-        print(f"Get {len(self.courseCode)} available courses!")
-        print("Finding files on canvas...\n")
+        print(f"\rGet {len(self.courseCode)} available courses!")
+        print("\rFinding files on canvas...", end='')
         self._sync_all_courses()
-        print(f"\nFind {self.total_cnt} new files!")
-        if not self.total_cnt:
-            print("Your local files are already up to date!")
+        if self.total_cnt == 0:
+            print("\rYour local files are already up to date!")
         else:
-            print("\nStart to download! \nDownload Size: %.1fMB" %(round(self.download_size, 1)))
+            print(f"\rFind {self.total_cnt} new files!           ")
+            print(f"Start to download! Size: {round(self.download_size, 2)}MB")
+            word = 'None'
             while self.downloaded_cnt < self.total_cnt:
-                print("\r{:5d}/{:5d}  Downloading...".format(
-                    self.downloaded_cnt, self.total_cnt),
-                    end='')
+                if word not in (str(self.files[-1]) + ' ' * 10) * 2:
+                    word = str(self.files[-1]) + ' ' * 10
+                print("\r{:5d}/{:5d}  Downloading... {}".format(
+                    self.downloaded_cnt, self.total_cnt, word[:15]),
+                      end='')
+                word = word[1:] + word[0]
                 time.sleep(0.1)
-            print("\r{:5d}/{:5d} Finish!        ".format(self.downloaded_cnt,
-                                                        self.total_cnt))
-        print("\nThese files only exists locally:")
-        for f in self.local_only_files:
-            print("  " + f)
+            print("\r{:5d}/{:5d} Finish!{}".format(self.downloaded_cnt,
+                                                   self.total_cnt, ' ' * 25))
+        if self.local_only_files:
+            print("\nThese files only exists locally:")
+            [print("  " + f) for f in self.local_only_files]
 
 
 if __name__ == "__main__":
-    Syncer = CanvasSyncer()
+    Syncer = CanvasSyncer(
+        os.path.join(os.path.expanduser('~'), ".canvassyncer"))
+    # Syncer = CanvasSyncer()
     Syncer.sync()
