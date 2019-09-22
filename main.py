@@ -230,7 +230,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='A Simple Canvas File Syncer')
     parser.add_argument('-r', help='Recreate config file', action="store_true")
     args = parser.parse_args()
-    if args.r:
+    if args.r or not os.path.exists(CONFIG_PATH):
         initConfig()
     Syncer = CanvasSyncer(CONFIG_PATH)
     Syncer.sync()
