@@ -4,18 +4,21 @@ import requests
 from threading import Thread
 import threading
 import time
+import argparse
+
+CONFIG_PATH = os.path.join(os.path.expanduser('~'), ".canvassyncer")
 
 
 class CanvasSyncer:
     def __init__(self, settings_path="./settings.json"):
+        print(f"\rLoading settings...", end='')
+        self.settings = self.load_settings(settings_path)
+        print("\rSettings loaded!    ")
         self.sess = requests.Session()
         self.downloaded_cnt = 0
         self.total_cnt = 0
         self.download_size = 0
         self.courseCode = {}
-        print(f"\rLoading settings...", end='')
-        self.settings = self.load_settings(settings_path)
-        print("\rSettings loaded!    ")
         self.baseurl = self.settings['canvasURL'] + '/api/v1'
         self.download_dir = self.settings['downloadDir']
         self.filesize_thresh = self.settings['filesizeThresh']
@@ -137,7 +140,7 @@ class CanvasSyncer:
                                 f"{self.courseCode[courseID]}{fileName}")
             if os.path.exists(path):
                 continue
-            response = requests.head(fileUrl)
+            response = self.sess.head(fileUrl)
             fileSize = int(response.headers['content-length']) >> 20
             if fileSize > self.filesize_thresh:
                 # isDownload = input(
@@ -158,7 +161,7 @@ class CanvasSyncer:
         for f in local_files:
             self.local_only_files.append(f'  {self.courseCode[courseID]}' + f)
 
-    def _sync_all_courses(self):
+    def syncAllCourses(self):
         sync_threads = []
         for course_id in self.courseCode.keys():
             t = Thread(target=self.syncFiles, args=(course_id, ), daemon=True)
@@ -171,7 +174,7 @@ class CanvasSyncer:
         self.courseCode = self.getCourseID()
         print(f"\rGet {len(self.courseCode)} available courses!")
         print("\rFinding files on canvas...", end='')
-        self._sync_all_courses()
+        self.syncAllCourses()
         if self.total_cnt == 0:
             print("\rYour local files are already up to date!")
         else:
@@ -193,8 +196,35 @@ class CanvasSyncer:
             [print("  " + f) for f in self.local_only_files]
 
 
+def initConfig():
+    print("Generating new config file...")
+    url = input(
+        "Please input your canvas url(Default: https://umjicanvas.com):"
+    ).strip()
+    if not url:
+        url = "https://umjicanvas.com"
+    token = input("Please input your canvas access token:").strip()
+    courses = input(
+        "Please input the code of courses you want to sync(split with space):"
+    ).strip().split()
+    downloadDir = input(
+        "Please input the path you want to download canvas files:").strip()
+    reDict = {
+        "canvasURL": url,
+        "token": token,
+        "courseCodes": courses,
+        "downloadDir": downloadDir,
+        "filesizeThresh": 150
+    }
+    with open(CONFIG_PATH, mode='w', encoding='utf-8') as f:
+        json.dump(reDict, f)
+
+
 if __name__ == "__main__":
-    Syncer = CanvasSyncer(
-        os.path.join(os.path.expanduser('~'), ".canvassyncer"))
-    # Syncer = CanvasSyncer()
+    parser = argparse.ArgumentParser(description='A Simple Canvas File Syncer')
+    parser.add_argument('-r', help='Recreate config file', action="store_true")
+    args = parser.parse_args()
+    if args.r:
+        initConfig()
+    Syncer = CanvasSyncer(CONFIG_PATH)
     Syncer.sync()
