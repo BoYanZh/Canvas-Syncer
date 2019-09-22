@@ -21,8 +21,8 @@ class CanvasSyncer:
         self.courseCode = {}
         self.baseurl = self.settings['canvasURL'] + '/api/v1'
         self.download_dir = self.settings['downloadDir']
-        self.filesize_thresh = self.settings['filesizeThresh']
         self.files = [None]
+        self.skipfiles = []
         self.fileslock = threading.Lock()
 
         if not os.path.exists(self.download_dir):
@@ -149,7 +149,8 @@ class CanvasSyncer:
                 isDownload = 'N'
                 if isDownload not in ['y', 'Y']:
                     # print('Creating empty file as scapegoat')
-                    open(path, 'w').close()
+                    # open(path, 'w').close()
+                    self.skipfiles.append(path)
                     continue
             self.download_size += fileSize
             # print(
@@ -168,6 +169,11 @@ class CanvasSyncer:
             t.start()
             sync_threads.append(t)
         [t.join() for t in sync_threads]
+        if self.skipfiles:
+            print(
+                f"The following file(s) will not be synced due to their size (over {self.filesize_thresh} MB):"
+            )
+            [print(f) for f in self.skipfiles]
 
     def sync(self):
         print("\rGetting course IDs...", end='')
