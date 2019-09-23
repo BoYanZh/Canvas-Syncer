@@ -169,11 +169,6 @@ class CanvasSyncer:
             t.start()
             sync_threads.append(t)
         [t.join() for t in sync_threads]
-        if self.skipfiles:
-            print(
-                f"The following file(s) will not be synced due to their size (over {self.settings['filesizeThresh']} MB):"
-            )
-            [print(f) for f in self.skipfiles]
 
     def sync(self):
         print("\rGetting course IDs...", end='')
@@ -185,6 +180,11 @@ class CanvasSyncer:
             print("\rYour local files are already up to date!")
         else:
             print(f"\rFind {self.total_cnt} new files!           ")
+            if self.skipfiles:
+                print(
+                    f"The following file(s) will not be synced due to their size (over {self.settings['filesizeThresh']} MB):"
+                )
+                [print(f) for f in self.skipfiles]
             print(f"Start to download! Size: {round(self.download_size, 2)}MB")
             word = 'None'
             while self.downloaded_cnt < self.total_cnt:
