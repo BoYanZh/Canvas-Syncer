@@ -142,7 +142,7 @@ class CanvasSyncer:
                 continue
             response = self.sess.head(fileUrl)
             fileSize = int(response.headers['content-length']) >> 20
-            if fileSize > self.filesize_thresh:
+            if fileSize > self.settings['filesizeThresh']:
                 # isDownload = input(
                 #     'Target file: %s is too big (%.2fMB), are you sure to download it?(Y/N) '
                 #     % (fileName, round(fileSize, 2)))
@@ -171,7 +171,7 @@ class CanvasSyncer:
         [t.join() for t in sync_threads]
         if self.skipfiles:
             print(
-                f"The following file(s) will not be synced due to their size (over {self.filesize_thresh} MB):"
+                f"The following file(s) will not be synced due to their size (over {self.settings['filesizeThresh']} MB):"
             )
             [print(f) for f in self.skipfiles]
 
