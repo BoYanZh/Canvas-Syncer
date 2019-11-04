@@ -19,7 +19,7 @@ You can use `canvassyncer -h` to get help.
 
 Open Your Canvas-Account-Approved Integrations-New Access Token
 
-You can may refer to <https://github.com/tc-imba/canvas-auto-rubric#generate-key-access-token-on-canvas>
+You may also refer to <https://github.com/tc-imba/canvas-auto-rubric#generate-key-access-token-on-canvas>
 
 ## Contribution
 
