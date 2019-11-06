@@ -7,7 +7,7 @@ import threading
 import time
 import argparse
 
-CONFIG_PATH = os.path.join(os.path.abspath('.'), "settings.json")
+CONFIG_PATH = os.path.join(os.path.abspath(__file__), "settings.json")
 MAX_DOWNLOAD_COUNT = 16
 
 
