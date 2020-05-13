@@ -103,6 +103,8 @@ class CanvasSyncer:
             time.sleep(0.1)
         with self.countLock:
             self.threadCount += 1
+        with self.filesLock:
+            self.files.append(dst)
         tryTime = 0
         while tryTime <= 5:
             try:
@@ -110,8 +112,6 @@ class CanvasSyncer:
                 break
             except ConnectionError:
                 tryTime += 1
-        with self.filesLock:
-            self.files.append(dst)
         with open(dst + ".tmp", 'wb') as fd:
             for chunk in r.iter_content(512):
                 fd.write(chunk)
