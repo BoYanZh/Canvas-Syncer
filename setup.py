@@ -5,7 +5,8 @@ setup(
     version='1.1.0',
     description='A canvas file syner',
     url='https://github.com/BoYanZh/Canvas-Syncer',
-    author='JI Tech',
+    author='SJTU JI Tech',
+    author_email='bomingzh@sjtu.edu.cn',
     packages=find_packages(),
     python_requires='>=3.5',
     entry_points={
