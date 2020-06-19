@@ -3,58 +3,133 @@ import re
 import json
 import requests
 from threading import Thread
+from queue import Queue
 import threading
 import time
 import argparse
+from functools import partial
 
-CONFIG_PATH = os.path.join(os.path.abspath(__file__), "../settings.json")
+print = partial(print, flush=True)
+
+CONFIG_PATH = "./.canvassyncer.json"
 MAX_DOWNLOAD_COUNT = 16
+_sentinel = object()
+
+
+class MultithreadDownloader:
+    def __init__(self, session, maxThread):
+        self.sess = session
+        self.maxThread = maxThread
+        self.countLock = threading.Lock()
+        self.taskQueue = Queue()
+        self.downloadedCnt = 0
+        self.totalCnt = 0
+
+    def downloadFile(self, queue):
+        while True:
+            src, dst = queue.get()
+            if src is _sentinel:
+                queue.put([src, dst])
+                break
+            tryTime = 0
+            try:
+                while True:
+                    try:
+                        r = self.sess.get(src, stream=True)
+                        break
+                    except ConnectionError:
+                        tryTime += 1
+                        if tryTime == 5:
+                            raise Exception("Too many retry!")
+                with open(dst + ".tmp", 'wb') as fd:
+                    for chunk in r.iter_content(512):
+                        fd.write(chunk)
+                os.rename(dst + ".tmp", dst)
+            except:
+                print('Error: {dst}')
+            with self.countLock:
+                self.downloadedCnt += 1
+
+    def init(self):
+        self.taskQueue = Queue()
+        self.downloadedCnt = 0
+        self.totalCnt = 0
+
+    def create(self, infos):
+        self.init()
+        for src, dst in infos:
+            self.taskQueue.put((src, dst))
+            self.totalCnt += 1
+        self.taskQueue.put((_sentinel, _sentinel))
+
+    def start(self):
+        for i in range(self.maxThread):
+            t = Thread(target=self.downloadFile,
+                       args=(self.taskQueue, ),
+                       daemon=True)
+            t.start()
+
+    @property
+    def finished(self):
+        return self.downloadedCnt == self.totalCnt
+
+    def waitTillFinish(self):
+        while not self.finished:
+            print("\r{:5d}/{:5d}  Downloading...".format(
+                self.downloadedCnt, self.totalCnt),
+                  end='')
+            time.sleep(0.1)
+        if self.totalCnt > 0:
+            print("\r{:5d}/{:5d} Finish!        ".format(
+                self.downloadedCnt, self.totalCnt))
 
 
 class CanvasSyncer:
-    def __init__(self, settings_path="./settings.json"):
+    def __init__(self, settings_path="./.canvassyncer.json"):
         print(f"\rLoading settings...", end='')
-        self.settings = self.load_settings(settings_path)
+        self.settings = self.loadSettings(settings_path)
         print("\rSettings loaded!    ")
         self.sess = requests.Session()
-        self.downloaded_cnt = 0
-        self.total_cnt = 0
-        self.download_size = 0
+        self.downloadSize = 0
         self.courseCode = {}
         self.baseurl = self.settings['canvasURL'] + '/api/v1'
-        self.download_dir = self.settings['downloadDir']
-        self.files = [None]
+        self.downloadDir = self.settings['downloadDir']
         self.downloadFiles = []
+        self.laterFiles = []
         self.skipfiles = []
         self.filesLock = threading.Lock()
-        self.countLock = threading.Lock()
-        self.threadCount = 0
-        self.local_only_files = []
-        if not os.path.exists(self.download_dir):
-            os.mkdir(self.download_dir)
+        self.taskQueue = Queue()
+        self.downloader = MultithreadDownloader(self.sess, MAX_DOWNLOAD_COUNT)
+        if not os.path.exists(self.downloadDir):
+            os.mkdir(self.downloadDir)
 
-    def load_settings(self, file_name):
-        file_path = os.path.join(
-            os.path.split(os.path.realpath(__file__))[0], file_name)
-        return json.load(open(file_path, 'r', encoding='UTF-8'))
+    def loadSettings(self, filePath):
+        return json.load(open(filePath, 'r', encoding='UTF-8'))
+
+    def sessGet(self, *args, **kwargs):
+        try:
+            return self.sess.get(*args, **kwargs)
+        except:
+            raise Exception("Connection error!")
 
     def createFolders(self, courseID, folders):
         for folder in folders.values():
-            path = os.path.join(self.download_dir,
+            path = os.path.join(self.downloadDir,
                                 f"{self.courseCode[courseID]}{folder}")
             if not os.path.exists(path):
                 os.makedirs(path)
 
     def getLocalFiles(self, courseID, folders):
-        local_files = []
+        localFiles = []
         for folder in folders.values():
-            path = os.path.join(self.download_dir,
+            path = os.path.join(self.downloadDir,
                                 f"{self.courseCode[courseID]}{folder}")
-            local_files += [
-                os.path.join(folder, f) for f in os.listdir(path)
+            localFiles += [
+                os.path.join(folder, f).replace('\\', '/').replace('//', '/')
+                for f in os.listdir(path)
                 if not os.path.isdir(os.path.join(path, f))
             ]
-        return local_files
+        return localFiles
 
     def getCourseFolders(self, courseID):
         return [
@@ -69,7 +144,7 @@ class CanvasSyncer:
             url = f"{self.baseurl}/courses/{courseID}/folders?" + \
                 f"access_token={self.settings['token']}&" + \
                 f"page={page}"
-            folders = self.sess.get(url).json()
+            folders = self.sessGet(url).json()
             if not folders:
                 break
             for folder in folders:
@@ -87,45 +162,24 @@ class CanvasSyncer:
             url = f"{self.baseurl}/courses/{courseID}/files?" + \
                 f"access_token={self.settings['token']}&" + \
                 f"page={page}"
-            files = self.sess.get(url).json()
+            files = self.sessGet(url).json()
             if not files:
                 break
             for f in files:
                 f['display_name'] = re.sub(r"[\/\\\:\*\?\"\<\>\|]", "_",
                                            f['display_name'])
                 path = f"{folders[f['folder_id']]}/{f['display_name']}"
-                res[path] = f["url"]
+                path = path.replace('\\', '/').replace('//', '/')
+                modifiedTimeStamp = time.mktime(
+                    time.strptime(f["modified_at"], "%Y-%m-%dT%H:%M:%SZ"))
+                res[path] = (f["url"], int(modifiedTimeStamp))
             page += 1
         return folders, res
-
-    def downloadFile(self, src, dst):
-        while self.threadCount > MAX_DOWNLOAD_COUNT:
-            time.sleep(0.1)
-        with self.countLock:
-            self.threadCount += 1
-        tryTime = 0
-        while tryTime <= 5:
-            try:
-                r = self.sess.get(src, stream=True)
-                break
-            except ConnectionError:
-                tryTime += 1
-        with self.filesLock:
-            self.files.append(dst)
-        with open(dst + ".tmp", 'wb') as fd:
-            for chunk in r.iter_content(512):
-                fd.write(chunk)
-        os.rename(dst + ".tmp", dst)
-        with self.countLock:
-            self.threadCount -= 1
-        with self.filesLock:
-            self.files.remove(dst)
-            self.downloaded_cnt += 1
 
     def getCourseCode(self, courseID):
         url = f"{self.baseurl}/courses/{courseID}?" + \
                 f"access_token={self.settings['token']}"
-        return self.sess.get(url).json()['course_code']
+        return self.sessGet(url).json()['course_code']
 
     def getCourseID(self):
         res = {}
@@ -134,7 +188,7 @@ class CanvasSyncer:
             url = f"{self.baseurl}/courses?" + \
                     f"access_token={self.settings['token']}&" + \
                     f"page={page}"
-            courses = self.sess.get(url).json()
+            courses = self.sessGet(url).json()
             if not courses:
                 break
             for course in courses:
@@ -145,124 +199,145 @@ class CanvasSyncer:
             page += 1
         return res
 
-    def syncFiles(self, courseID):
+    def getCourseTaskInfo(self, courseID):
         folders, files = self.getCourseFiles(courseID)
         self.createFolders(courseID, folders)
-        local_files = [
-            f.replace('\\', '/').replace('//', '/')
-            for f in self.getLocalFiles(courseID, folders)
-        ]
-        path = os.path.join(self.download_dir, f"{self.courseCode[courseID]}")
-        for fileName, fileUrl in files.items():
+        localFiles = self.getLocalFiles(courseID, folders)
+        res = []
+        for fileName, (fileUrl, fileModifiedTimeStamp) in files.items():
             if not fileUrl:
                 continue
-            if fileName.replace('\\', '/').replace('//', '/') in local_files:
-                local_files.remove(
-                    fileName.replace('\\', '/').replace('//', '/'))
-            path = os.path.join(self.download_dir,
+            path = os.path.join(self.downloadDir,
                                 f"{self.courseCode[courseID]}{fileName}")
-            if os.path.exists(path):
+            if fileName in localFiles:
+                localCreatedTimeStamp = int(os.path.getctime(path))
+                if fileModifiedTimeStamp <= localCreatedTimeStamp:
+                    continue
+                self.laterFiles.append((fileUrl, path))
                 continue
             response = self.sess.head(fileUrl)
             fileSize = int(response.headers['content-length']) / 2**20
             if fileSize > self.settings['filesizeThresh']:
-                # isDownload = input(
-                #     'Target file: %s is too big (%.2fMB), are you sure to download it?(Y/N) '
-                #     % (fileName, round(fileSize, 2)))
-                isDownload = 'N'
+                isDownload = input(
+                    'Target file: %s is too big (%.2fMB), are you sure to download it?(Y/N) '
+                    % (fileName, round(fileSize, 2)))
                 if isDownload not in ['y', 'Y']:
-                    # print('Creating empty file as scapegoat')
-                    # open(path, 'w').close()
+                    print('Creating empty file as scapegoat')
+                    open(path, 'w').close()
                     self.skipfiles.append(path)
                     continue
             self.downloadFiles.append(
                 f"{self.courseCode[courseID]}{fileName} ({round(fileSize, 2)}MB)"
             )
-            self.download_size += fileSize
-            Thread(target=self.downloadFile, args=(fileUrl, path),
-                   daemon=True).start()
-            self.total_cnt += 1
-        # for f in local_files:
-        #     self.local_only_files.append(f'  {self.courseCode[courseID]}' + f)
+            self.downloadSize += fileSize
+            res.append((fileUrl, path))
+        return res
 
-    def syncAllCourses(self):
-        sync_threads = []
-        for course_id in self.courseCode.keys():
-            t = Thread(target=self.syncFiles, args=(course_id, ), daemon=True)
-            t.start()
-            sync_threads.append(t)
-        [t.join() for t in sync_threads]
-
-    def sync(self):
-        print("\rGetting course IDs...", end='')
-        self.courseCode = self.getCourseID()
-        print(f"\rGet {len(self.courseCode)} available courses!")
+    def checkNewFiles(self):
         print("\rFinding files on canvas...", end='')
-        self.syncAllCourses()
-        if self.total_cnt == 0:
+        allInfos = []
+        for courseID in self.courseCode.keys():
+            for info in self.getCourseTaskInfo(courseID):
+                allInfos.append(info)
+        if len(allInfos) == 0:
             print("\rYour local files are already up to date!")
         else:
-            print(f"\rFind {self.total_cnt} new files!           ")
+            print(f"\rFind {len(allInfos)} new files!           ")
             if self.skipfiles:
                 print(
                     f"The following file(s) will not be synced due to their size (over {self.settings['filesizeThresh']} MB):"
                 )
                 [print(f) for f in self.skipfiles]
             print(
-                f"Start to download following files! Total size: {round(self.download_size, 2)}MB"
+                f"Start to download following files! Total size: {round(self.downloadSize, 2)}MB"
             )
             [print(s) for s in self.downloadFiles]
-            word = 'None'
-            while self.files != [None]:
-                if word not in (str(self.files[-1]) + ' ' * 10) * 2:
-                    word = str(self.files[-1]) + ' ' * 10
-                print("\r{:5d}/{:5d}  Downloading... {}".format(
-                    self.downloaded_cnt, self.total_cnt, word[:15]),
-                      end='')
-                word = word[1:] + word[0]
-                time.sleep(0.1)
-            print("\r{:5d}/{:5d} Finish!{}".format(self.downloaded_cnt,
-                                                   self.total_cnt, ' ' * 25))
-        # if self.local_only_files:
-        #     print("\nThese files only exists locally:")
-        #     [print("  " + f) for f in self.local_only_files]
+        self.downloader.create(allInfos)
+        self.downloader.start()
+        self.downloader.waitTillFinish()
+
+    def checkLaterFiles(self):
+        if not self.laterFiles:
+            return
+        print("These files has later version on canvas:")
+        [print(path) for (fileUrl, path) in self.laterFiles]
+        isDownload = input('Update all?(Y/n)')
+        if isDownload in ['n', 'N']:
+            return
+        for (fileUrl, path) in self.laterFiles:
+            localCreatedTimeStamp = int(os.path.getctime(path))
+            os.rename(path, f"{path}.{localCreatedTimeStamp}")
+        self.downloader.create(self.laterFiles)
+        self.downloader.start()
+        self.downloader.waitTillFinish()
+
+    def sync(self):
+        print("\rGetting course IDs...", end='')
+        self.courseCode = self.getCourseID()
+        print(f"\rGet {len(self.courseCode)} available courses!")
+        self.checkNewFiles()
+        self.checkLaterFiles()
 
 
 def initConfig():
+    oldConfig = None
+    if os.path.exists(CONFIG_PATH):
+        oldConfig = json.load(open(CONFIG_PATH))
     print("Generating new config file...")
     url = input(
         "Please input your canvas url(Default: https://umjicanvas.com):"
     ).strip()
     if not url:
         url = "https://umjicanvas.com"
-    token = input("Please input your canvas access token:").strip()
+    tipStr = f"(Default: {oldConfig['token']})" if oldConfig else ""
+    token = input(f"Please input your canvas access token{tipStr}:").strip()
+    if not token:
+        token = oldConfig['token']
+    tipStr = f"(Default: {' '.join(oldConfig['courseCodes'])})" if oldConfig else ""
     courses = input(
-        "Please input the code of courses you want to sync(split with space):"
+        f"Please input the code of courses you want to sync(split with space){tipStr}:"
     ).strip().split()
+    if not courses:
+        courses = oldConfig['courseCodes']
+    tipStr = f"(Default: {oldConfig['downloadDir']})" if oldConfig else f"(Default: {os.path.abspath('')})"
     downloadDir = input(
-        f"Please input the path you want to save canvas files(Default: {os.path.abspath('')}):"
-    ).strip()
+        f"Please input the path you want to save canvas files{tipStr}:").strip(
+        )
     if not downloadDir:
         downloadDir = os.path.abspath('')
+    tipStr = f"(Default: {oldConfig['filesizeThresh']})" if oldConfig else f"(Default: 250)"
+    filesizeThresh = input(
+        f"Please input the maximum file size to download in MB{tipStr}:"
+    ).strip()
+    try:
+        filesizeThresh = float(filesizeThresh)
+    except:
+        filesizeThresh = 250
     reDict = {
         "canvasURL": url,
         "token": token,
         "courseCodes": courses,
         "downloadDir": downloadDir,
-        "filesizeThresh": 150
+        "filesizeThresh": filesizeThresh
     }
     with open(CONFIG_PATH, mode='w', encoding='utf-8') as f:
         json.dump(reDict, f, indent=4)
 
 
 def run():
-    parser = argparse.ArgumentParser(description='A Simple Canvas File Syncer')
-    parser.add_argument('-r', help='Recreate config file', action="store_true")
-    args = parser.parse_args()
-    if args.r or not os.path.exists(CONFIG_PATH):
-        initConfig()
-    Syncer = CanvasSyncer(CONFIG_PATH)
-    Syncer.sync()
+    try:
+        parser = argparse.ArgumentParser(
+            description='A Simple Canvas File Syncer')
+        parser.add_argument('-r',
+                            help='Recreate config file',
+                            action="store_true")
+        args = parser.parse_args()
+        if args.r or not os.path.exists(CONFIG_PATH):
+            initConfig()
+        Syncer = CanvasSyncer(CONFIG_PATH)
+        Syncer.sync()
+    except Exception:
+        print("Connection error! Task abort! Please check your network or your token!")
 
 
 if __name__ == "__main__":
