@@ -24,6 +24,7 @@ class MultithreadDownloader:
         self.taskQueue = Queue()
         self.downloadedCnt = 0
         self.totalCnt = 0
+        self.downloadingFileName = 'None'
 
     def downloadFile(self, queue):
         while True:
@@ -31,6 +32,7 @@ class MultithreadDownloader:
             if src is _sentinel:
                 queue.put([src, dst])
                 break
+            self.downloadingFileName = dst
             tryTime = 0
             try:
                 while True:
@@ -54,6 +56,7 @@ class MultithreadDownloader:
         self.taskQueue = Queue()
         self.downloadedCnt = 0
         self.totalCnt = 0
+        self.downloadingFileName = 'None'
 
     def create(self, infos):
         self.init()
@@ -74,14 +77,18 @@ class MultithreadDownloader:
         return self.downloadedCnt == self.totalCnt
 
     def waitTillFinish(self):
+        word = 'None'
         while not self.finished:
-            print("\r{:5d}/{:5d}  Downloading...".format(
-                self.downloadedCnt, self.totalCnt),
+            if word not in (self.downloadingFileName + ' ' * 10) * 2:
+                word = self.downloadingFileName + ' ' * 10
+            print("\r{:5d}/{:5d} Downloading... {}".format(
+                self.downloadedCnt, self.totalCnt, word[:15]),
                   end='')
+            word = word[1:] + word[0]
             time.sleep(0.1)
         if self.totalCnt > 0:
-            print("\r{:5d}/{:5d} Finish!        ".format(
-                self.downloadedCnt, self.totalCnt))
+            print("\r{:5d}/{:5d} Finish!        {}".format(
+                self.downloadedCnt, self.totalCnt, ' ' * 15))
 
 
 class CanvasSyncer:
@@ -331,13 +338,23 @@ def run():
         parser.add_argument('-r',
                             help='Recreate config file',
                             action="store_true")
+        parser.add_argument('-p',
+                            '--path',
+                            help='Config file path',
+                            default=CONFIG_PATH)
         args = parser.parse_args()
-        if args.r or not os.path.exists(CONFIG_PATH):
+        configPath = args.path
+        if args.r or not os.path.exists(configPath):
+            if not os.path.exists(configPath):
+                print('Config file not exist, creating...')
             initConfig()
-        Syncer = CanvasSyncer(CONFIG_PATH)
+        Syncer = CanvasSyncer(configPath)
         Syncer.sync()
-    except Exception:
-        print("Connection error! Task abort! Please check your network or your token!")
+    except Exception as e:
+        print(
+            "Connection error! Task abort! Please check your network or your token!"
+        )
+        raise e
 
 
 if __name__ == "__main__":
