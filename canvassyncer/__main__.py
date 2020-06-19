@@ -46,7 +46,7 @@ class MultithreadDownloader:
                         fd.write(chunk)
                 os.rename(dst + ".tmp", dst)
             except:
-                print('Error: {dst}')
+                print(f"Error: Download {dst} fails!")
             with self.countLock:
                 self.downloadedCnt += 1
 
