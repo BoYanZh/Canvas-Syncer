@@ -356,7 +356,7 @@ def run():
                             action="store_true")
         parser.add_argument('-y',
                             help='Confirm all prompts',
-                            action="store_true")
+                            action="store_false")
         parser.add_argument('-p',
                             '--path',
                             help='Config file path',
