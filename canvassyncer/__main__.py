@@ -90,9 +90,10 @@ class MultithreadDownloader:
 
 
 class CanvasSyncer:
-    def __init__(self, settings_path="./.canvassyncer.json"):
+    def __init__(self, confirmAll, settingsPath="./.canvassyncer.json"):
+        self.confirmAll = confirmAll
         print(f"\rLoading settings...", end='')
-        self.settings = self.loadSettings(settings_path)
+        self.settings = self.loadSettings(settingsPath)
         print("\rSettings loaded!    ")
         self.sess = requests.Session()
         retryStrategy = Retry(total=5,
@@ -232,11 +233,12 @@ class CanvasSyncer:
             response = self.sess.head(fileUrl)
             fileSize = int(response.headers['content-length']) / 2**20
             if fileSize > self.settings['filesizeThresh']:
-                isDownload = input(
-                    '\nTarget file: %s is too big (%.2fMB), are you sure to download it?(y/N) '
-                    % (fileName, round(fileSize, 2)))
-                if isDownload not in ['y', 'Y']:
-                    print('Creating empty file as scapegoat')
+                print(
+                    f'\nTarget file: {fileName} is too big ({fileSize:.2}MB), ignore?(Y/n) ',
+                    end='')
+                isDownload = input() if not self.confirmAll else 'Y'
+                if isDownload not in ['n', 'N']:
+                    print('Creating empty file as scapegoat...')
                     open(path, 'w').close()
                     self.skipfiles.append(path)
                     continue
@@ -275,7 +277,8 @@ class CanvasSyncer:
             return
         print("These file(s) have later version on canvas:")
         [print(path) for (fileUrl, path) in self.laterFiles]
-        isDownload = input('Update all?(Y/n)')
+        print('Update all?(Y/n) ', end='')
+        isDownload = input() if not self.confirmAll else 'Y'
         if isDownload in ['n', 'N']:
             return
         for (fileUrl, path) in self.laterFiles:
@@ -351,6 +354,9 @@ def run():
         parser.add_argument('-r',
                             help='Recreate config file',
                             action="store_true")
+        parser.add_argument('-y',
+                            help='Confirm all prompts',
+                            action="store_true")
         parser.add_argument('-p',
                             '--path',
                             help='Config file path',
@@ -361,7 +367,7 @@ def run():
             if not os.path.exists(configPath):
                 print('Config file not exist, creating...')
             initConfig()
-        Syncer = CanvasSyncer(configPath)
+        Syncer = CanvasSyncer(args.y, configPath)
         Syncer.sync()
     except ConnectionError as e:
         print("\nConnection Error! Please check your network and your token!")
