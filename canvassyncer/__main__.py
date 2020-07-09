@@ -2,10 +2,15 @@ import os
 import re
 import json
 import requests
+from requests.adapters import HTTPAdapter
+import requests.exceptions
+import urllib3.exceptions
+from urllib3.util.retry import Retry
 from threading import Thread
 from queue import Queue
 import threading
 import time
+from datetime import timezone, datetime
 import argparse
 from functools import partial
 
@@ -35,20 +40,13 @@ class MultithreadDownloader:
             self.downloadingFileName = dst
             tryTime = 0
             try:
-                while True:
-                    try:
-                        r = self.sess.get(src, stream=True)
-                        break
-                    except ConnectionError:
-                        tryTime += 1
-                        if tryTime == 5:
-                            raise Exception("Too many retry!")
+                r = self.sess.get(src, timeout=10, stream=True)
                 with open(dst + ".tmp", 'wb') as fd:
                     for chunk in r.iter_content(512):
                         fd.write(chunk)
                 os.rename(dst + ".tmp", dst)
-            except:
-                print(f"Error: Download {dst} fails!")
+            except Exception as e:
+                print(f"\nError: {type(e)}. Download {dst} fails!")
             with self.countLock:
                 self.downloadedCnt += 1
 
@@ -97,6 +95,12 @@ class CanvasSyncer:
         self.settings = self.loadSettings(settings_path)
         print("\rSettings loaded!    ")
         self.sess = requests.Session()
+        retryStrategy = Retry(total=5,
+                              status_forcelist=[429, 500, 502, 503, 504],
+                              method_whitelist=["HEAD", "GET", "OPTIONS"])
+        adapter = HTTPAdapter(max_retries=retryStrategy)
+        self.sess.mount("https://", adapter)
+        self.sess.mount("http://", adapter)
         self.downloadSize = 0
         self.courseCode = {}
         self.baseurl = self.settings['canvasURL'] + '/api/v1'
@@ -114,10 +118,13 @@ class CanvasSyncer:
         return json.load(open(filePath, 'r', encoding='UTF-8'))
 
     def sessGet(self, *args, **kwargs):
+        if kwargs.get('timeout') is None:
+            kwargs['timeout'] = 10
         try:
             return self.sess.get(*args, **kwargs)
-        except:
-            raise Exception("Connection error!")
+        except (urllib3.exceptions.MaxRetryError,
+                requests.exceptions.ConnectionError) as e:
+            raise ConnectionError(e)
 
     def createFolders(self, courseID, folders):
         for folder in folders.values():
@@ -177,8 +184,8 @@ class CanvasSyncer:
                                            f['display_name'])
                 path = f"{folders[f['folder_id']]}/{f['display_name']}"
                 path = path.replace('\\', '/').replace('//', '/')
-                modifiedTimeStamp = time.mktime(
-                    time.strptime(f["modified_at"], "%Y-%m-%dT%H:%M:%SZ"))
+                dt = datetime.strptime(f["modified_at"], "%Y-%m-%dT%H:%M:%SZ")
+                modifiedTimeStamp = dt.replace(tzinfo=timezone.utc).timestamp()
                 res[path] = (f["url"], int(modifiedTimeStamp))
             page += 1
         return folders, res
@@ -226,7 +233,7 @@ class CanvasSyncer:
             fileSize = int(response.headers['content-length']) / 2**20
             if fileSize > self.settings['filesizeThresh']:
                 isDownload = input(
-                    '\nTarget file: %s is too big (%.2fMB), are you sure to download it?(Y/N) '
+                    '\nTarget file: %s is too big (%.2fMB), are you sure to download it?(y/N) '
                     % (fileName, round(fileSize, 2)))
                 if isDownload not in ['y', 'Y']:
                     print('Creating empty file as scapegoat')
@@ -266,14 +273,20 @@ class CanvasSyncer:
     def checkLaterFiles(self):
         if not self.laterFiles:
             return
-        print("These files has later version on canvas:")
+        print("These file(s) have later version on canvas:")
         [print(path) for (fileUrl, path) in self.laterFiles]
         isDownload = input('Update all?(Y/n)')
         if isDownload in ['n', 'N']:
             return
         for (fileUrl, path) in self.laterFiles:
             localCreatedTimeStamp = int(os.path.getctime(path))
-            os.rename(path, f"{path}.{localCreatedTimeStamp}")
+            try:
+                os.rename(path, f"{path}.{localCreatedTimeStamp}")
+            except Exception as e:
+                try:
+                    os.remove(path)
+                except Exception as e:
+                    pass
         self.downloader.create(self.laterFiles)
         self.downloader.start()
         self.downloader.waitTillFinish()
@@ -350,11 +363,9 @@ def run():
             initConfig()
         Syncer = CanvasSyncer(configPath)
         Syncer.sync()
-    except Exception as e:
-        print(
-            "Connection error! Task abort! Please check your network or your token!"
-        )
-        raise e
+    except ConnectionError as e:
+        print("\nConnection Error! Please check your network and your token!")
+        # raise e
 
 
 if __name__ == "__main__":
