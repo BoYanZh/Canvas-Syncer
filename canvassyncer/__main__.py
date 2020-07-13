@@ -392,7 +392,7 @@ def run():
         parser.add_argument('-V',
                             '--version',
                             action='version',
-                            version='1.1.6')
+                            version='1.1.7')
         args = parser.parse_args()
         configPath = args.path
         if args.r or not os.path.exists(configPath):
