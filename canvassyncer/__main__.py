@@ -47,7 +47,8 @@ class MultithreadDownloader:
                         fd.write(chunk)
                 os.rename(tmpFilePath, dst)
             except Exception as e:
-                print(f"\nError: {e.__class__.__name__}. Download {dst} fails!")
+                print(
+                    f"\nError: {e.__class__.__name__}. Download {dst} fails!")
             with self.countLock:
                 self.downloadedCnt += 1
 
@@ -200,6 +201,7 @@ class CanvasSyncer:
     def getCourseID(self):
         res = {}
         page = 1
+        lowerCourseCodes = [s.lower() for s in self.settings['courseCodes']]
         while True:
             url = f"{self.baseurl}/courses?" + \
                     f"access_token={self.settings['token']}&" + \
@@ -208,11 +210,13 @@ class CanvasSyncer:
             if not courses:
                 break
             for course in courses:
-                if course.get('course_code', '').lower() in [
-                        s.lower() for s in self.settings['courseCodes']
-                ]:
+                if course.get('course_code', '').lower() in lowerCourseCodes:
                     res[course['id']] = course['course_code']
+                    lowerCourseCodes.remove(
+                        course.get('course_code', '').lower())
             page += 1
+        for courseID in self.settings['courseIDs']:
+            res[courseID] = self.getCourseCode(courseID)
         return res
 
     def getCourseTaskInfo(self, courseID):
@@ -319,44 +323,56 @@ def initConfig():
     if os.path.exists(CONFIG_PATH):
         oldConfig = json.load(open(CONFIG_PATH))
     print("Generating new config file...")
-    url = input(
-        "Please input your canvas url(Default: https://umjicanvas.com):"
-    ).strip()
-    if not url:
-        url = "https://umjicanvas.com"
-    tipStr = f"(Default: {oldConfig['token']})" if oldConfig else ""
-    token = input(f"Please input your canvas access token{tipStr}:").strip()
-    if not token:
-        token = oldConfig['token']
-    tipStr = f"(Default: {' '.join(oldConfig['courseCodes'])})" if oldConfig else ""
-    courses = input(
-        f"Please input the code of courses you want to sync(split with space){tipStr}:"
-    ).strip().split()
-    if not courses:
-        courses = oldConfig['courseCodes']
-    tipStr = f"(Default: {oldConfig['downloadDir']})" if oldConfig else f"(Default: {os.path.abspath('')})"
-    downloadDir = input(
-        f"Please input the path you want to save canvas files{tipStr}:").strip(
-        )
-    if not downloadDir:
-        downloadDir = os.path.abspath('')
-    tipStr = f"(Default: {oldConfig['filesizeThresh']})" if oldConfig else f"(Default: 250)"
-    filesizeThresh = input(
-        f"Please input the maximum file size to download in MB{tipStr}:"
-    ).strip()
     try:
-        filesizeThresh = float(filesizeThresh)
-    except:
-        filesizeThresh = 250
-    reDict = {
-        "canvasURL": url,
-        "token": token,
-        "courseCodes": courses,
-        "downloadDir": downloadDir,
-        "filesizeThresh": filesizeThresh
-    }
-    with open(CONFIG_PATH, mode='w', encoding='utf-8') as f:
-        json.dump(reDict, f, indent=4)
+        url = input(
+            "Please input your canvas url(Default: https://umjicanvas.com):"
+        ).strip()
+        if not url:
+            url = "https://umjicanvas.com"
+        tipStr = f"(Default: {oldConfig.get('token', '')})" if oldConfig else ""
+        token = input(
+            f"Please input your canvas access token{tipStr}:").strip()
+        if not token:
+            token = oldConfig.get('token', '')
+        tipStr = f"(Default: {' '.join(oldConfig.get('courseCodes', list()))})" if oldConfig else ""
+        courseCodes = input(
+            f"Please input the code of courses you want to sync(split with space){tipStr}:"
+        ).strip().split()
+        if not courseCodes:
+            courseCodes = oldConfig.get('courseCodes', list())
+        tipStr = f"(Default: {' '.join(oldConfig.get('courseIDs', list()))})" if oldConfig else ""
+        courseIDs = input(
+            f"Please input the ID of courses you want to sync(split with space){tipStr}:"
+        ).strip().split()
+        if not courseIDs:
+            courseIDs = oldConfig.get('courseIDs', list())
+        courseIDs = [int(courseID) for courseID in courseIDs]
+        tipStr = f"(Default: {oldConfig.get('downloadDir', '')})" if oldConfig else f"(Default: {os.path.abspath('')})"
+        downloadDir = input(
+            f"Please input the path you want to save canvas files{tipStr}:"
+        ).strip()
+        if not downloadDir:
+            downloadDir = os.path.abspath('')
+        tipStr = f"(Default: {oldConfig.get('filesizeThresh', '')})" if oldConfig else f"(Default: 250)"
+        filesizeThresh = input(
+            f"Please input the maximum file size to download in MB{tipStr}:"
+        ).strip()
+        try:
+            filesizeThresh = float(filesizeThresh)
+        except:
+            filesizeThresh = 250
+        reDict = {
+            "canvasURL": url,
+            "token": token,
+            "courseCodes": courseCodes,
+            "courseIDs": courseIDs,
+            "downloadDir": downloadDir,
+            "filesizeThresh": filesizeThresh
+        }
+        with open(CONFIG_PATH, mode='w', encoding='utf-8') as f:
+            json.dump(reDict, f, indent=4)
+    except Exception as e:
+        print(f"\nError: {e.__class__.__name__}. Creating config file fails!")
 
 
 def run():
@@ -383,6 +399,8 @@ def run():
             if not os.path.exists(configPath):
                 print('Config file not exist, creating...')
             initConfig()
+            if args.r:
+                return
         Syncer = CanvasSyncer(args.y, configPath)
         Syncer.sync()
     except ConnectionError as e:
