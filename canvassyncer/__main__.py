@@ -233,10 +233,16 @@ class CanvasSyncer:
             response = self.sess.head(fileUrl)
             fileSize = int(response.headers['content-length']) / 2**20
             if fileSize > self.settings['filesizeThresh']:
-                print(
-                    f'\nTarget file: {fileName} is too big ({fileSize:.2}MB), ignore?(Y/n) ',
-                    end='')
-                isDownload = input() if not self.confirmAll else 'Y'
+                if not self.confirmAll:
+                    print(
+                        f'\nTarget file: {fileName} is too large ({fileSize:.2}MB), ignore?(Y/n) ',
+                        end='')
+                    isDownload = input()
+                else:
+                    print(
+                        f'\nTarget file: {fileName} is too large ({fileSize:.2}MB), ignore. '
+                    )
+                    isDownload = 'Y'
                 if isDownload not in ['n', 'N']:
                     print('Creating empty file as scapegoat...')
                     open(path, 'w').close()
@@ -277,20 +283,25 @@ class CanvasSyncer:
             return
         print("These file(s) have later version on canvas:")
         [print(path) for (fileUrl, path) in self.laterFiles]
-        print('Update all?(Y/n) ', end='')
-        isDownload = input() if not self.confirmAll else 'Y'
+        if not self.confirmAll:
+            print('Update all?(Y/n) ', end='')
+            isDownload = input()
+        else:
+            isDownload = 'Y'
         if isDownload in ['n', 'N']:
             return
+        laterFiles = []
         for (fileUrl, path) in self.laterFiles:
             localCreatedTimeStamp = int(os.path.getctime(path))
             try:
-                os.rename(path, f"{path}.{localCreatedTimeStamp}")
-            except Exception as e:
                 try:
-                    os.remove(path)
+                    os.rename(path, f"{path}.{localCreatedTimeStamp}")
                 except Exception as e:
-                    pass
-        self.downloader.create(self.laterFiles)
+                    os.remove(path)
+                laterFiles.append(path)
+            except Exception as e:
+                print(f"{e.__class__.__name__}! Skipped: {path}")
+        self.downloader.create(laterFiles)
         self.downloader.start()
         self.downloader.waitTillFinish()
 
@@ -352,15 +363,19 @@ def run():
         parser = argparse.ArgumentParser(
             description='A Simple Canvas File Syncer')
         parser.add_argument('-r',
-                            help='Recreate config file',
+                            help='recreate config file',
                             action="store_true")
         parser.add_argument('-y',
-                            help='Confirm all prompts',
+                            help='confirm all prompts',
                             action="store_true")
         parser.add_argument('-p',
                             '--path',
-                            help='Config file path',
+                            help='appoint config file path',
                             default=CONFIG_PATH)
+        parser.add_argument('-V',
+                            '--version',
+                            action='version',
+                            version='1.1.5')
         args = parser.parse_args()
         configPath = args.path
         if args.r or not os.path.exists(configPath):
