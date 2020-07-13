@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='canvassyncer',
-    version='1.1.5',
+    version='1.1.6',
     description='A canvas file syner',
     url='https://github.com/BoYanZh/Canvas-Syncer',
     author='SJTU JI Tech',

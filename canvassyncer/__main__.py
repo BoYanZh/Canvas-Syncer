@@ -41,12 +41,13 @@ class MultithreadDownloader:
             tryTime = 0
             try:
                 r = self.sess.get(src, timeout=10, stream=True)
-                with open(dst + ".tmp", 'wb') as fd:
+                tmpFilePath = f"{dst}.tmp.{int(time.time())}"
+                with open(tmpFilePath, 'wb') as fd:
                     for chunk in r.iter_content(512):
                         fd.write(chunk)
-                os.rename(dst + ".tmp", dst)
+                os.rename(tmpFilePath, dst)
             except Exception as e:
-                print(f"\nError: {type(e)}. Download {dst} fails!")
+                print(f"\nError: {e.__class__.__name__}. Download {dst} fails!")
             with self.countLock:
                 self.downloadedCnt += 1
 
@@ -298,7 +299,7 @@ class CanvasSyncer:
                     os.rename(path, f"{path}.{localCreatedTimeStamp}")
                 except Exception as e:
                     os.remove(path)
-                laterFiles.append(path)
+                laterFiles.append((fileUrl, path))
             except Exception as e:
                 print(f"{e.__class__.__name__}! Skipped: {path}")
         self.downloader.create(laterFiles)
@@ -375,7 +376,7 @@ def run():
         parser.add_argument('-V',
                             '--version',
                             action='version',
-                            version='1.1.5')
+                            version='1.1.6')
         args = parser.parse_args()
         configPath = args.path
         if args.r or not os.path.exists(configPath):
