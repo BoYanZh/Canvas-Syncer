@@ -123,6 +123,9 @@ class CanvasSyncer:
     def sessGet(self, *args, **kwargs):
         if kwargs.get('timeout') is None:
             kwargs['timeout'] = 10
+        if kwargs.get('header') is None:
+            kwargs['headers'] = dict()
+        kwargs['headers']['Authorization'] = f"Bearer {self.settings['token']}"
         try:
             return self.sess.get(*args, **kwargs)
         except (urllib3.exceptions.MaxRetryError,
@@ -158,9 +161,7 @@ class CanvasSyncer:
         res = {}
         page = 1
         while True:
-            url = f"{self.baseurl}/courses/{courseID}/folders?" + \
-                f"access_token={self.settings['token']}&" + \
-                f"page={page}"
+            url = f"{self.baseurl}/courses/{courseID}/folders?page={page}"
             folders = self.sessGet(url).json()
             if not folders:
                 break
@@ -176,9 +177,7 @@ class CanvasSyncer:
         folders, res = self.getCourseFoldersWithID(courseID), {}
         page = 1
         while True:
-            url = f"{self.baseurl}/courses/{courseID}/files?" + \
-                f"access_token={self.settings['token']}&" + \
-                f"page={page}"
+            url = f"{self.baseurl}/courses/{courseID}/files?page={page}"
             files = self.sessGet(url).json()
             if not files:
                 break
@@ -194,8 +193,7 @@ class CanvasSyncer:
         return folders, res
 
     def getCourseCode(self, courseID):
-        url = f"{self.baseurl}/courses/{courseID}?" + \
-                f"access_token={self.settings['token']}"
+        url = f"{self.baseurl}/courses/{courseID}"
         return self.sessGet(url).json()['course_code']
 
     def getCourseID(self):
@@ -203,9 +201,7 @@ class CanvasSyncer:
         page = 1
         lowerCourseCodes = [s.lower() for s in self.settings['courseCodes']]
         while True:
-            url = f"{self.baseurl}/courses?" + \
-                    f"access_token={self.settings['token']}&" + \
-                    f"page={page}"
+            url = f"{self.baseurl}/courses?page={page}"
             courses = self.sessGet(url).json()
             if not courses:
                 break
@@ -319,7 +315,7 @@ class CanvasSyncer:
 
 
 def initConfig():
-    oldConfig = None
+    oldConfig = dict()
     if os.path.exists(CONFIG_PATH):
         oldConfig = json.load(open(CONFIG_PATH))
     print("Generating new config file...")
@@ -373,6 +369,7 @@ def initConfig():
             json.dump(reDict, f, indent=4)
     except Exception as e:
         print(f"\nError: {e.__class__.__name__}. Creating config file fails!")
+        exit(1)
 
 
 def run():
@@ -405,7 +402,7 @@ def run():
         Syncer.sync()
     except ConnectionError as e:
         print("\nConnection Error! Please check your network and your token!")
-        # raise e
+        exit(1)
 
 
 if __name__ == "__main__":
