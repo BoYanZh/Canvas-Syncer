@@ -1,24 +1,27 @@
-import os
-import re
+import argparse
 import json
+import os
+import pkg_resources
+import re
 import requests
-from requests.adapters import HTTPAdapter
 import requests.exceptions
-import urllib3.exceptions
-from urllib3.util.retry import Retry
-from threading import Thread
-from queue import Queue
 import threading
 import time
+import urllib3.exceptions
 from datetime import timezone, datetime
-import argparse
 from functools import partial
+from queue import Queue
+from requests.adapters import HTTPAdapter
+from threading import Thread
+from urllib3.util.retry import Retry
 
-print = partial(print, flush=True)
-
-CONFIG_PATH = "./.canvassyncer.json"
+__version__ = pkg_resources.require("canvassyncer")[0].version
+CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           ".canvassyncer.json")
 MAX_DOWNLOAD_COUNT = 16
 _sentinel = object()
+
+print = partial(print, flush=True)
 
 
 class MultithreadDownloader:
@@ -92,7 +95,7 @@ class MultithreadDownloader:
 
 
 class CanvasSyncer:
-    def __init__(self, confirmAll, settingsPath="./.canvassyncer.json"):
+    def __init__(self, confirmAll, settingsPath):
         self.confirmAll = confirmAll
         print(f"\rLoading settings...", end='')
         self.settings = self.loadSettings(settingsPath)
@@ -199,20 +202,25 @@ class CanvasSyncer:
     def getCourseID(self):
         res = {}
         page = 1
-        lowerCourseCodes = [s.lower() for s in self.settings['courseCodes']]
-        while True:
-            url = f"{self.baseurl}/courses?page={page}"
-            courses = self.sessGet(url).json()
-            if not courses:
-                break
-            for course in courses:
-                if course.get('course_code', '').lower() in lowerCourseCodes:
-                    res[course['id']] = course['course_code']
-                    lowerCourseCodes.remove(
-                        course.get('course_code', '').lower())
-            page += 1
-        for courseID in self.settings['courseIDs']:
-            res[courseID] = self.getCourseCode(courseID)
+        if self.settings.get('courseCodes'):
+            lowerCourseCodes = [
+                s.lower() for s in self.settings['courseCodes']
+            ]
+            while True:
+                url = f"{self.baseurl}/courses?page={page}"
+                courses = self.sessGet(url).json()
+                if not courses:
+                    break
+                for course in courses:
+                    if course.get('course_code',
+                                  '').lower() in lowerCourseCodes:
+                        res[course['id']] = course['course_code']
+                        lowerCourseCodes.remove(
+                            course.get('course_code', '').lower())
+                page += 1
+        if self.settings.get('courseIDs'):
+            for courseID in self.settings['courseIDs']:
+                res[courseID] = self.getCourseCode(courseID)
         return res
 
     def getCourseTaskInfo(self, courseID):
@@ -236,12 +244,12 @@ class CanvasSyncer:
             if fileSize > self.settings['filesizeThresh']:
                 if not self.confirmAll:
                     print(
-                        f'\nTarget file: {fileName} is too large ({fileSize:.2}MB), ignore?(Y/n) ',
+                        f'\nTarget file: {self.courseCode[courseID]}{fileName} is too large ({round(fileSize, 2)}MB), ignore?(Y/n) ',
                         end='')
                     isDownload = input()
                 else:
                     print(
-                        f'\nTarget file: {fileName} is too large ({fileSize:.2}MB), ignore. '
+                        f'\nTarget file: {self.courseCode[courseID]}{fileName} is too large ({round(fileSize, 2)}MB), ignore. '
                     )
                     isDownload = 'Y'
                 if isDownload not in ['n', 'N']:
@@ -318,41 +326,37 @@ def initConfig():
     oldConfig = dict()
     if os.path.exists(CONFIG_PATH):
         oldConfig = json.load(open(CONFIG_PATH))
+    elif os.path.exists("./canvassyncer.json"):
+        oldConfig = json.load(open("./canvassyncer.json"))
     print("Generating new config file...")
     try:
-        url = input(
-            "Please input your canvas url(Default: https://umjicanvas.com):"
-        ).strip()
+        url = input("Canvas url(Default: https://umjicanvas.com):").strip()
         if not url:
             url = "https://umjicanvas.com"
         tipStr = f"(Default: {oldConfig.get('token', '')})" if oldConfig else ""
-        token = input(
-            f"Please input your canvas access token{tipStr}:").strip()
+        token = input(f"Canvas access token{tipStr}:").strip()
         if not token:
             token = oldConfig.get('token', '')
         tipStr = f"(Default: {' '.join(oldConfig.get('courseCodes', list()))})" if oldConfig else ""
         courseCodes = input(
-            f"Please input the code of courses you want to sync(split with space){tipStr}:"
+            f"Courses to sync in course codes(split with space){tipStr}:"
         ).strip().split()
         if not courseCodes:
             courseCodes = oldConfig.get('courseCodes', list())
         tipStr = f"(Default: {' '.join(oldConfig.get('courseIDs', list()))})" if oldConfig else ""
         courseIDs = input(
-            f"Please input the ID of courses you want to sync(split with space){tipStr}:"
-        ).strip().split()
+            f"Courses to sync in course ID(split with space){tipStr}:").strip(
+            ).split()
         if not courseIDs:
             courseIDs = oldConfig.get('courseIDs', list())
         courseIDs = [int(courseID) for courseID in courseIDs]
         tipStr = f"(Default: {oldConfig.get('downloadDir', '')})" if oldConfig else f"(Default: {os.path.abspath('')})"
-        downloadDir = input(
-            f"Please input the path you want to save canvas files{tipStr}:"
-        ).strip()
+        downloadDir = input(f"Path to save canvas files{tipStr}:").strip()
         if not downloadDir:
             downloadDir = os.path.abspath('')
         tipStr = f"(Default: {oldConfig.get('filesizeThresh', '')})" if oldConfig else f"(Default: 250)"
         filesizeThresh = input(
-            f"Please input the maximum file size to download in MB{tipStr}:"
-        ).strip()
+            f"Maximum file size to download(MB){tipStr}:").strip()
         try:
             filesizeThresh = float(filesizeThresh)
         except:
@@ -389,7 +393,7 @@ def run():
         parser.add_argument('-V',
                             '--version',
                             action='version',
-                            version='1.1.7')
+                            version=__version__)
         args = parser.parse_args()
         configPath = args.path
         if args.r or not os.path.exists(configPath):
@@ -402,6 +406,15 @@ def run():
         Syncer.sync()
     except ConnectionError as e:
         print("\nConnection Error! Please check your network and your token!")
+        exit(1)
+    except Exception as e:
+        print(
+            f"\nUnexpected Error: {e.__class__.__name__}. Please check your network and your token!"
+        )
+        raise e
+        exit(1)
+    except KeyboardInterrupt as e:
+        print('\nOperation cancelled by user, exit.')
         exit(1)
 
 

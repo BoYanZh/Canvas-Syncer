@@ -2,13 +2,13 @@ from setuptools import setup, find_packages
 
 setup(
     name='canvassyncer',
-    version='1.1.7',
+    version='1.1.8',
     description='A canvas file syner',
     url='https://github.com/BoYanZh/Canvas-Syncer',
     author='SJTU JI Tech',
     author_email='bomingzh@sjtu.edu.cn',
     packages=find_packages(),
-    python_requires='>=3.5',
+    python_requires='>=3.6',
     entry_points={
         'console_scripts': [
             'canvassyncer=canvassyncer:main',
