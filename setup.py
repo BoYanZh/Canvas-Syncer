@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='canvassyncer',
-    version='1.1.9',
+    version='1.2.0',
     description='A canvas file syner',
     url='https://github.com/BoYanZh/Canvas-Syncer',
     author='SJTU JI Tech',
@@ -19,6 +19,7 @@ setup(
         'Source': 'https://github.com/BoYanZh/Canvas-Syncer',
     },
     install_requires=[
-        'requests'
+        'requests',
+        'tqdm'
     ]
 )

@@ -14,55 +14,84 @@ from queue import Queue
 from requests.adapters import HTTPAdapter
 from threading import Thread
 from urllib3.util.retry import Retry
+from tqdm import tqdm
 
 __version__ = pkg_resources.require("canvassyncer")[0].version
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            ".canvassyncer.json")
-MAX_DOWNLOAD_COUNT = 16
+MAX_DOWNLOAD_COUNT = 8
 _sentinel = object()
 
 print = partial(print, flush=True)
 
 
+class MultithreadDownloaderStop(BaseException):
+    pass
+
+
 class MultithreadDownloader:
+    blockSize = 512
+
     def __init__(self, session, maxThread):
         self.sess = session
         self.maxThread = maxThread
+        self.currentDownload = []
         self.countLock = threading.Lock()
         self.taskQueue = Queue()
         self.downloadedCnt = 0
         self.totalCnt = 0
-        self.downloadingFileName = 'None'
+        self.totalSize = 0
+        self.tqdm = None
+        self.stopSignal = False
 
-    def downloadFile(self, queue):
+    def downloadFile(self, i, queue):
         while True:
+            if self.stopSignal:
+                self.downloadedCnt = self.totalCnt
+                break
             src, dst = queue.get()
             if src is _sentinel:
                 queue.put([src, dst])
                 break
-            self.downloadingFileName = dst
+            self.currentDownload[i] = dst.split('/')[-1].split('\\')[-1]
             tryTime = 0
             try:
                 r = self.sess.get(src, timeout=10, stream=True)
                 tmpFilePath = f"{dst}.tmp.{int(time.time())}"
                 with open(tmpFilePath, 'wb') as fd:
-                    for chunk in r.iter_content(512):
+                    for chunk in r.iter_content(
+                            MultithreadDownloader.blockSize):
+                        self.tqdm.update(len(chunk))
                         fd.write(chunk)
+                        if self.stopSignal:
+                            raise MultithreadDownloaderStop
                 os.rename(tmpFilePath, dst)
+            except MultithreadDownloaderStop as e:
+                if os.path.exists(tmpFilePath):
+                    os.remove(tmpFilePath)
             except Exception as e:
                 print(
                     f"\nError: {e.__class__.__name__}. Download {dst} fails!")
-            with self.countLock:
-                self.downloadedCnt += 1
+                if os.path.exists(tmpFilePath):
+                    os.remove(tmpFilePath)
+            finally:
+                with self.countLock:
+                    self.downloadedCnt += 1
 
     def init(self):
         self.taskQueue = Queue()
         self.downloadedCnt = 0
         self.totalCnt = 0
         self.downloadingFileName = 'None'
+        self.totalSize = 0
+        self.stopSignal = False
+        self.tqdm = None
+        self.currentDownload = ['' for i in range(self.maxThread)]
 
-    def create(self, infos):
+    def create(self, infos, totalSize=0):
         self.init()
+        self.totalSize = totalSize
+        self.tqdm = tqdm(total=totalSize, unit='iB', unit_scale=True)
         for src, dst in infos:
             self.taskQueue.put((src, dst))
             self.totalCnt += 1
@@ -71,27 +100,46 @@ class MultithreadDownloader:
     def start(self):
         for i in range(self.maxThread):
             t = Thread(target=self.downloadFile,
-                       args=(self.taskQueue, ),
+                       args=(i, self.taskQueue),
                        daemon=True)
             t.start()
 
+    def stop(self):
+        self.stopSignal = True
+        if self.tqdm:
+            self.tqdm.close()
+        print('\nOperation cancelled by user, exiting...')
+        while not self.finished:
+            time.sleep(0.1)
+
     @property
     def finished(self):
-        return self.downloadedCnt == self.totalCnt
+        return self.downloadedCnt >= self.totalCnt
 
     def waitTillFinish(self):
         word = 'None'
         while not self.finished:
-            if word not in (self.downloadingFileName + ' ' * 10) * 2:
-                word = self.downloadingFileName + ' ' * 10
-            print("\r{:5d}/{:5d} Downloading... {}".format(
-                self.downloadedCnt, self.totalCnt, word[:15]),
-                  end='')
-            word = word[1:] + word[0]
+            for fileName in reversed(self.currentDownload):
+                if fileName:
+                    downloadingFileName = fileName
+                    break
+            if word not in (downloadingFileName + ' ' * 5) * 2:
+                word = downloadingFileName + ' ' * 5
+            if len(word) <= 20:
+                self.tqdm.set_description((word + ' ' * 10)[:15])
+            else:
+                self.tqdm.set_description(word[:15])
+            # print("\r{:5d}/{:5d} Downloading... {}".format(
+            #     self.downloadedCnt, self.totalCnt, word[:15]),
+            #       end='')
+            if len(word) > 20:
+                word = word[1:] + word[0]
             time.sleep(0.1)
-        if self.totalCnt > 0:
-            print("\r{:5d}/{:5d} Finish!        {}".format(
-                self.downloadedCnt, self.totalCnt, ' ' * 15))
+        if self.tqdm:
+            self.tqdm.close()
+        # if self.totalCnt > 0:
+        #     print("\r{:5d}/{:5d} Finish!        {}".format(
+        #         self.downloadedCnt, self.totalCnt, ' ' * 15))
 
 
 class CanvasSyncer:
@@ -108,11 +156,13 @@ class CanvasSyncer:
         self.sess.mount("https://", adapter)
         self.sess.mount("http://", adapter)
         self.downloadSize = 0
+        self.laterDownloadSize = 0
         self.courseCode = {}
         self.baseurl = self.settings['canvasURL'] + '/api/v1'
         self.downloadDir = self.settings['downloadDir']
-        self.downloadFiles = []
+        self.newInfo = []
         self.laterFiles = []
+        self.laterInfo = []
         self.skipfiles = []
         self.filesLock = threading.Lock()
         self.taskQueue = Queue()
@@ -233,23 +283,30 @@ class CanvasSyncer:
                 continue
             path = os.path.join(self.downloadDir,
                                 f"{self.courseCode[courseID]}{fileName}")
+            path = path.replace('\\', '/').replace('//', '/')
             if fileName in localFiles:
                 localCreatedTimeStamp = int(os.path.getctime(path))
                 if fileModifiedTimeStamp <= localCreatedTimeStamp:
                     continue
+                response = self.sess.head(fileUrl)
+                fileSize = int(response.headers.get('content-length', 0))
+                self.laterDownloadSize += fileSize
                 self.laterFiles.append((fileUrl, path))
+                self.laterInfo.append(
+                    f"{self.courseCode[courseID]}{fileName} ({round(fileSize / 2**20, 2)}MB)"
+                )
                 continue
             response = self.sess.head(fileUrl)
-            fileSize = int(response.headers['content-length']) / 2**20
-            if fileSize > self.settings['filesizeThresh']:
+            fileSize = int(response.headers.get('content-length', 0))
+            if fileSize / 2**20 > self.settings['filesizeThresh']:
                 if not self.confirmAll:
                     print(
-                        f'\nTarget file: {self.courseCode[courseID]}{fileName} is too large ({round(fileSize, 2)}MB), ignore?(Y/n) ',
+                        f'\nTarget file: {self.courseCode[courseID]}{fileName} is too large ({round(fileSize / 2**20, 2)}MB), ignore?(Y/n) ',
                         end='')
                     isDownload = input()
                 else:
                     print(
-                        f'\nTarget file: {self.courseCode[courseID]}{fileName} is too large ({round(fileSize, 2)}MB), ignore. '
+                        f'\nTarget file: {self.courseCode[courseID]}{fileName} is too large ({round(fileSize / 2**20, 2)}MB), ignore. '
                     )
                     isDownload = 'Y'
                 if isDownload not in ['n', 'N']:
@@ -257,8 +314,8 @@ class CanvasSyncer:
                     open(path, 'w').close()
                     self.skipfiles.append(path)
                     continue
-            self.downloadFiles.append(
-                f"{self.courseCode[courseID]}{fileName} ({round(fileSize, 2)}MB)"
+            self.newInfo.append(
+                f"{self.courseCode[courseID]}{fileName} ({round(fileSize / 2**20, 2)}MB)"
             )
             self.downloadSize += fileSize
             res.append((fileUrl, path))
@@ -271,7 +328,7 @@ class CanvasSyncer:
             for info in self.getCourseTaskInfo(courseID):
                 allInfos.append(info)
         if len(allInfos) == 0:
-            print("\rYour local files are already up to date!")
+            print("\rLocal files are synced!")
         else:
             print(f"\rFind {len(allInfos)} new files!           ")
             if self.skipfiles:
@@ -280,18 +337,18 @@ class CanvasSyncer:
                 )
                 [print(f) for f in self.skipfiles]
             print(
-                f"Start to download following files! Total size: {round(self.downloadSize, 2)}MB"
+                f"Start to download following files! Total size: {round(self.downloadSize / 2**20, 2)}MB"
             )
-            [print(s) for s in self.downloadFiles]
-        self.downloader.create(allInfos)
-        self.downloader.start()
-        self.downloader.waitTillFinish()
+            [print(s) for s in self.newInfo]
+            self.downloader.create(allInfos, self.downloadSize)
+            self.downloader.start()
+            self.downloader.waitTillFinish()
 
     def checkLaterFiles(self):
         if not self.laterFiles:
             return
         print("These file(s) have later version on canvas:")
-        [print(path) for (fileUrl, path) in self.laterFiles]
+        [print(s) for s in self.laterInfo]
         if not self.confirmAll:
             print('Update all?(Y/n) ', end='')
             isDownload = input()
@@ -299,6 +356,9 @@ class CanvasSyncer:
             isDownload = 'Y'
         if isDownload in ['n', 'N']:
             return
+        print(
+            f"Start to download these files! Total size: {round(self.laterDownloadSize / 2**20, 2)}MB"
+        )
         laterFiles = []
         for (fileUrl, path) in self.laterFiles:
             localCreatedTimeStamp = int(os.path.getctime(path))
@@ -310,7 +370,7 @@ class CanvasSyncer:
                 laterFiles.append((fileUrl, path))
             except Exception as e:
                 print(f"{e.__class__.__name__}! Skipped: {path}")
-        self.downloader.create(laterFiles)
+        self.downloader.create(laterFiles, self.laterDownloadSize)
         self.downloader.start()
         self.downloader.waitTillFinish()
 
@@ -414,7 +474,7 @@ def run():
         raise e
         exit(1)
     except KeyboardInterrupt as e:
-        print('\nOperation cancelled by user, exit.')
+        Syncer.downloader.stop()
         exit(1)
 
 
