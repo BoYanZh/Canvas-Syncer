@@ -15,6 +15,7 @@ from requests.adapters import HTTPAdapter
 from threading import Thread
 from urllib3.util.retry import Retry
 from tqdm import tqdm
+import ntpath
 
 __version__ = pkg_resources.require("canvassyncer")[0].version
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -54,7 +55,7 @@ class MultithreadDownloader:
                 queue.put([src, dst])
                 break
             self.currentDownload[i] = dst.split('/')[-1].split('\\')[-1]
-            tryTime = 0
+            tmpFilePath = ''
             try:
                 r = self.sess.get(src, timeout=10, stream=True)
                 tmpFilePath = f"{dst}.tmp.{int(time.time())}"
@@ -64,17 +65,14 @@ class MultithreadDownloader:
                         self.tqdm.update(len(chunk))
                         fd.write(chunk)
                         if self.stopSignal:
-                            raise MultithreadDownloaderStop
+                            break
                 os.rename(tmpFilePath, dst)
-            except MultithreadDownloaderStop as e:
-                if os.path.exists(tmpFilePath):
-                    os.remove(tmpFilePath)
             except Exception as e:
                 print(
                     f"\nError: {e.__class__.__name__}. Download {dst} fails!")
+            finally:
                 if os.path.exists(tmpFilePath):
                     os.remove(tmpFilePath)
-            finally:
                 with self.countLock:
                     self.downloadedCnt += 1
 
@@ -118,6 +116,7 @@ class MultithreadDownloader:
 
     def waitTillFinish(self):
         word = 'None'
+        downloadingFileName = ''
         while not self.finished:
             for fileName in reversed(self.currentDownload):
                 if fileName:
@@ -364,7 +363,10 @@ class CanvasSyncer:
             localCreatedTimeStamp = int(os.path.getctime(path))
             try:
                 try:
-                    os.rename(path, f"{path}.{localCreatedTimeStamp}")
+                    newPath = os.path.join(
+                        ntpath.dirname(path),
+                        f"{localCreatedTimeStamp}_{ntpath.basename(path)}")
+                    os.rename(path, newPath)
                 except Exception as e:
                     os.remove(path)
                 laterFiles.append((fileUrl, path))
@@ -437,6 +439,7 @@ def initConfig():
 
 
 def run():
+    Syncer = None
     try:
         parser = argparse.ArgumentParser(
             description='A Simple Canvas File Syncer')
@@ -472,9 +475,9 @@ def run():
             f"\nUnexpected Error: {e.__class__.__name__}. Please check your network and your token!"
         )
         raise e
-        exit(1)
     except KeyboardInterrupt as e:
-        Syncer.downloader.stop()
+        if Syncer:
+            Syncer.downloader.stop()
         exit(1)
 
 
