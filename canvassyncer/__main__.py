@@ -25,11 +25,6 @@ _sentinel = object()
 
 print = partial(print, flush=True)
 
-
-class MultithreadDownloaderStop(BaseException):
-    pass
-
-
 class MultithreadDownloader:
     blockSize = 512
 
