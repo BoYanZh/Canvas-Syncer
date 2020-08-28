@@ -5,7 +5,7 @@ A script that let you sync your local files / ??? with canvas.
 ## Usage
 
 ```bash
-pip3 install canvassyncer -i https://pypi.org/simple
+pip3 install canvassyncer
 canvassyncer
 ```
 

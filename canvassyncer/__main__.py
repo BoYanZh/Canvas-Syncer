@@ -1,7 +1,6 @@
 import argparse
 import json
 import os
-import pkg_resources
 import re
 import requests
 import requests.exceptions
@@ -17,13 +16,14 @@ from urllib3.util.retry import Retry
 from tqdm import tqdm
 import ntpath
 
-__version__ = pkg_resources.require("canvassyncer")[0].version
+__version__ = "1.2.2"
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            ".canvassyncer.json")
 MAX_DOWNLOAD_COUNT = 8
 _sentinel = object()
 
 print = partial(print, flush=True)
+
 
 class MultithreadDownloader:
     blockSize = 512
@@ -137,11 +137,9 @@ class MultithreadDownloader:
 
 
 class CanvasSyncer:
-    def __init__(self, confirmAll, settingsPath):
-        self.confirmAll = confirmAll
-        print(f"\rLoading settings...", end='')
-        self.settings = self.loadSettings(settingsPath)
-        print("\rSettings loaded!    ")
+    def __init__(self, config):
+        self.confirmAll = config['y']
+        self.config = config
         self.sess = requests.Session()
         retryStrategy = Retry(total=5,
                               status_forcelist=[429, 500, 502, 503, 504],
@@ -152,8 +150,8 @@ class CanvasSyncer:
         self.downloadSize = 0
         self.laterDownloadSize = 0
         self.courseCode = {}
-        self.baseurl = self.settings['canvasURL'] + '/api/v1'
-        self.downloadDir = self.settings['downloadDir']
+        self.baseurl = self.config['canvasURL'] + '/api/v1'
+        self.downloadDir = self.config['downloadDir']
         self.newInfo = []
         self.laterFiles = []
         self.laterInfo = []
@@ -164,16 +162,13 @@ class CanvasSyncer:
         if not os.path.exists(self.downloadDir):
             os.mkdir(self.downloadDir)
 
-    def loadSettings(self, filePath):
-        return json.load(open(filePath, 'r', encoding='UTF-8'))
-
     def sessGet(self, *args, **kwargs):
         if kwargs.get('timeout') is None:
             kwargs['timeout'] = 10
         if kwargs.get('header') is None:
             kwargs['headers'] = dict()
-        kwargs['headers']['Authorization'] = f"Bearer {self.settings['token']}"
-        kwargs['proxies'] = self.settings.get("proxies")
+        kwargs['headers']['Authorization'] = f"Bearer {self.config['token']}"
+        kwargs['proxies'] = self.config.get("proxies")
         try:
             return self.sess.get(*args, **kwargs)
         except (urllib3.exceptions.MaxRetryError,
@@ -247,9 +242,9 @@ class CanvasSyncer:
     def getCourseID(self):
         res = {}
         page = 1
-        if self.settings.get('courseCodes'):
+        if self.config.get('courseCodes'):
             lowerCourseCodes = [
-                s.lower() for s in self.settings['courseCodes']
+                s.lower() for s in self.config['courseCodes']
             ]
             while True:
                 url = f"{self.baseurl}/courses?page={page}"
@@ -263,8 +258,8 @@ class CanvasSyncer:
                         lowerCourseCodes.remove(
                             course.get('course_code', '').lower())
                 page += 1
-        if self.settings.get('courseIDs'):
-            for courseID in self.settings['courseIDs']:
+        if self.config.get('courseIDs'):
+            for courseID in self.config['courseIDs']:
                 res[courseID] = self.getCourseCode(courseID)
         return res
 
@@ -293,7 +288,7 @@ class CanvasSyncer:
                 continue
             response = self.sess.head(fileUrl)
             fileSize = int(response.headers.get('content-length', 0))
-            if fileSize / 2**20 > self.settings['filesizeThresh']:
+            if fileSize / 2**20 > self.config['filesizeThresh']:
                 if not self.confirmAll:
                     print(
                         f'\nTarget file: {self.courseCode[courseID]}{fileName} is too large ({round(fileSize / 2**20, 2)}MB), ignore?(Y/n) ',
@@ -328,7 +323,7 @@ class CanvasSyncer:
             print(f"\rFind {len(allInfos)} new files!           ")
             if self.skipfiles:
                 print(
-                    f"The following file(s) will not be synced due to their size (over {self.settings['filesizeThresh']} MB):"
+                    f"The following file(s) will not be synced due to their size (over {self.config['filesizeThresh']} MB):"
                 )
                 [print(f) for f in self.skipfiles]
             print(
@@ -401,17 +396,17 @@ def initConfig():
         ).strip().split()
         if not courseCodes:
             courseCodes = oldConfig.get('courseCodes', list())
-        tipStr = f"(Default: {' '.join(oldConfig.get('courseIDs', list()))})" if oldConfig else ""
+        tipStr = f"(Default: {' '.join([str(item) for item in oldConfig.get('courseIDs', list())])})" if oldConfig else ""
         courseIDs = input(
             f"Courses to sync in course ID(split with space){tipStr}:").strip(
             ).split()
         if not courseIDs:
             courseIDs = oldConfig.get('courseIDs', list())
         courseIDs = [int(courseID) for courseID in courseIDs]
-        tipStr = f"(Default: {oldConfig.get('downloadDir', '')})" if oldConfig else f"(Default: {os.path.abspath('')})"
+        tipStr = f"(Default: {oldConfig.get('downloadDir', os.path.abspath(''))})"
         downloadDir = input(f"Path to save canvas files{tipStr}:").strip()
         if not downloadDir:
-            downloadDir = os.path.abspath('')
+            downloadDir = oldConfig.get('downloadDir', os.path.abspath(''))
         tipStr = f"(Default: {oldConfig.get('filesizeThresh', '')})" if oldConfig else f"(Default: 250)"
         filesizeThresh = input(
             f"Maximum file size to download(MB){tipStr}:").strip()
@@ -419,16 +414,17 @@ def initConfig():
             filesizeThresh = float(filesizeThresh)
         except:
             filesizeThresh = 250
-        reDict = {
-            "canvasURL": url,
-            "token": token,
-            "courseCodes": courseCodes,
-            "courseIDs": courseIDs,
-            "downloadDir": downloadDir,
-            "filesizeThresh": filesizeThresh
-        }
-        with open(CONFIG_PATH, mode='w', encoding='utf-8') as f:
-            json.dump(reDict, f, indent=4)
+        json.dump(
+            {
+                "canvasURL": url,
+                "token": token,
+                "courseCodes": courseCodes,
+                "courseIDs": courseIDs,
+                "downloadDir": downloadDir,
+                "filesizeThresh": filesizeThresh
+            },
+            open(CONFIG_PATH, mode='w', encoding='utf-8'),
+            indent=4)
     except Exception as e:
         print(f"\nError: {e.__class__.__name__}. Creating config file fails!")
         exit(1)
@@ -449,6 +445,10 @@ def run():
                             '--path',
                             help='appoint config file path',
                             default=CONFIG_PATH)
+        parser.add_argument('-x',
+                            '--proxy',
+                            help='download proxy',
+                            default=None)
         parser.add_argument('-V',
                             '--version',
                             action='version',
@@ -461,7 +461,10 @@ def run():
             initConfig()
             if args.r:
                 return
-        Syncer = CanvasSyncer(args.y, configPath)
+        config = json.load(open(configPath, 'r', encoding='UTF-8'))
+        if args.y: config['y'] = args.y
+        if args.proxy: config['proxies'] = args.proxy
+        Syncer = CanvasSyncer(config)
         Syncer.sync()
     except ConnectionError as e:
         print("\nConnection Error! Please check your network and your token!")
@@ -470,7 +473,6 @@ def run():
         print(
             f"\nUnexpected Error: {e.__class__.__name__}. Please check your network and your token!"
         )
-        raise e
     except KeyboardInterrupt as e:
         if Syncer:
             Syncer.downloader.stop()
