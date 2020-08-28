@@ -178,6 +178,7 @@ class CanvasSyncer:
         if kwargs.get('header') is None:
             kwargs['headers'] = dict()
         kwargs['headers']['Authorization'] = f"Bearer {self.settings['token']}"
+        kwargs['proxies'] = self.settings.get("proxies")
         try:
             return self.sess.get(*args, **kwargs)
         except (urllib3.exceptions.MaxRetryError,
