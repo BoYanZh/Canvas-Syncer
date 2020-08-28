@@ -18,3 +18,5 @@ settings.json
 __pycache__
 courses/
 upload.sh
+dist.py
+*.spec
