@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import re
+import traceback
 import requests
 import requests.exceptions
 import threading
@@ -16,13 +17,13 @@ from urllib3.util.retry import Retry
 from tqdm import tqdm
 import ntpath
 
-__version__ = "1.2.6"
+__version__ = "1.2.7"
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            ".canvassyncer.json")
 MAX_DOWNLOAD_COUNT = 8
 _sentinel = object()
 
-print = partial(print, flush=True)
+# print = partial(print, flush=True)
 
 
 class MultithreadDownloader:
@@ -260,6 +261,10 @@ class CanvasSyncer:
             while True:
                 url = f"{self.baseurl}/courses?page={page}"
                 courses = self.sessGet(url).json()
+                if isinstance(courses, dict) and courses.get('errors'):
+                    errMsg = courses['errors'][0].get('message',
+                                                      'unknown error.')
+                    exit(1)
                 if not courses:
                     break
                 for course in courses:
@@ -329,7 +334,7 @@ class CanvasSyncer:
             for info in self.getCourseTaskInfo(courseID):
                 allInfos.append(info)
         if len(allInfos) == 0:
-            print("\rLocal files are synced!   ")
+            print("\rAll local files are synced!")
         else:
             print(f"\rFind {len(allInfos)} new files!           ")
             if self.skipfiles:
@@ -444,7 +449,7 @@ def initConfig():
 
 
 def run():
-    Syncer = None
+    Syncer, args = None, None
     try:
         parser = argparse.ArgumentParser(
             description='A Simple Canvas File Syncer')
@@ -466,6 +471,10 @@ def run():
                             '--version',
                             action='version',
                             version=__version__)
+        parser.add_argument('-d',
+                            '--debug',
+                            help='show debug information',
+                            action="store_true")
         args = parser.parse_args()
         configPath = args.path
         if args.r or not os.path.exists(configPath):
@@ -480,12 +489,14 @@ def run():
         Syncer = CanvasSyncer(config)
         Syncer.sync()
     except ConnectionError as e:
-        print("\nConnection Error! Please check your network and your token!")
+        print("\nConnection Error. Please check your network and your token!")
         exit(1)
     except Exception as e:
         print(
             f"\nUnexpected Error: {e.__class__.__name__}. Please check your network and your token!"
         )
+        if args.debug:
+            print(traceback.format_exc())
     except KeyboardInterrupt as e:
         if Syncer:
             Syncer.downloader.stop()
