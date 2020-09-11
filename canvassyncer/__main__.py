@@ -16,7 +16,7 @@ from urllib3.util.retry import Retry
 from tqdm import tqdm
 import ntpath
 
-__version__ = "1.2.2"
+__version__ = "1.2.5"
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            ".canvassyncer.json")
 MAX_DOWNLOAD_COUNT = 8
@@ -175,6 +175,19 @@ class CanvasSyncer:
                 requests.exceptions.ConnectionError) as e:
             raise ConnectionError(e)
 
+    def sessHead(self, *args, **kwargs):
+        if kwargs.get('timeout') is None:
+            kwargs['timeout'] = 10
+        if kwargs.get('header') is None:
+            kwargs['headers'] = dict()
+        kwargs['headers']['Authorization'] = f"Bearer {self.config['token']}"
+        kwargs['proxies'] = self.config.get("proxies")
+        try:
+            return self.sess.head(*args, **kwargs)
+        except (urllib3.exceptions.MaxRetryError,
+                requests.exceptions.ConnectionError) as e:
+            raise ConnectionError(e)
+
     def createFolders(self, courseID, folders):
         for folder in folders.values():
             path = os.path.join(self.downloadDir,
@@ -243,9 +256,7 @@ class CanvasSyncer:
         res = {}
         page = 1
         if self.config.get('courseCodes'):
-            lowerCourseCodes = [
-                s.lower() for s in self.config['courseCodes']
-            ]
+            lowerCourseCodes = [s.lower() for s in self.config['courseCodes']]
             while True:
                 url = f"{self.baseurl}/courses?page={page}"
                 courses = self.sessGet(url).json()
@@ -278,7 +289,7 @@ class CanvasSyncer:
                 localCreatedTimeStamp = int(os.path.getctime(path))
                 if fileModifiedTimeStamp <= localCreatedTimeStamp:
                     continue
-                response = self.sess.head(fileUrl)
+                response = self.sessHead(fileUrl)
                 fileSize = int(response.headers.get('content-length', 0))
                 self.laterDownloadSize += fileSize
                 self.laterFiles.append((fileUrl, path))
@@ -286,7 +297,7 @@ class CanvasSyncer:
                     f"{self.courseCode[courseID]}{fileName} ({round(fileSize / 2**20, 2)}MB)"
                 )
                 continue
-            response = self.sess.head(fileUrl)
+            response = self.sessHead(fileUrl)
             fileSize = int(response.headers.get('content-length', 0))
             if fileSize / 2**20 > self.config['filesizeThresh']:
                 if not self.confirmAll:
@@ -318,7 +329,7 @@ class CanvasSyncer:
             for info in self.getCourseTaskInfo(courseID):
                 allInfos.append(info)
         if len(allInfos) == 0:
-            print("\rLocal files are synced!")
+            print("\rLocal files are synced!   ")
         else:
             print(f"\rFind {len(allInfos)} new files!           ")
             if self.skipfiles:
@@ -353,13 +364,15 @@ class CanvasSyncer:
         for (fileUrl, path) in self.laterFiles:
             localCreatedTimeStamp = int(os.path.getctime(path))
             try:
-                try:
-                    newPath = os.path.join(
-                        ntpath.dirname(path),
-                        f"{localCreatedTimeStamp}_{ntpath.basename(path)}")
+                newPath = os.path.join(
+                    ntpath.dirname(path),
+                    f"{localCreatedTimeStamp}_{ntpath.basename(path)}")
+                if not os.path.exists(newPath):
                     os.rename(path, newPath)
-                except Exception as e:
-                    os.remove(path)
+                else:
+                    path = os.path.join(
+                        ntpath.dirname(path),
+                        f"{int(time.time())}_{ntpath.basename(path)}")
                 laterFiles.append((fileUrl, path))
             except Exception as e:
                 print(f"{e.__class__.__name__}! Skipped: {path}")
@@ -462,8 +475,8 @@ def run():
             if args.r:
                 return
         config = json.load(open(configPath, 'r', encoding='UTF-8'))
-        if args.y: config['y'] = args.y
-        if args.proxy: config['proxies'] = args.proxy
+        config['y'] = args.y
+        config['proxies'] = args.proxy
         Syncer = CanvasSyncer(config)
         Syncer.sync()
     except ConnectionError as e:
