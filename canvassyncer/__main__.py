@@ -17,13 +17,13 @@ from urllib3.util.retry import Retry
 from tqdm import tqdm
 import ntpath
 
-__version__ = "1.2.7"
+__version__ = "1.2.9"
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            ".canvassyncer.json")
 MAX_DOWNLOAD_COUNT = 8
 _sentinel = object()
 
-# print = partial(print, flush=True)
+print = partial(print, flush=True)
 
 
 class MultithreadDownloader:
@@ -264,6 +264,7 @@ class CanvasSyncer:
                 if isinstance(courses, dict) and courses.get('errors'):
                     errMsg = courses['errors'][0].get('message',
                                                       'unknown error.')
+                    print(f"\nError: {errMsg}")
                     exit(1)
                 if not courses:
                     break
@@ -400,52 +401,48 @@ def initConfig():
     elif os.path.exists("./canvassyncer.json"):
         oldConfig = json.load(open("./canvassyncer.json"))
     print("Generating new config file...")
+    url = input("Canvas url(Default: https://umjicanvas.com):").strip()
+    if not url:
+        url = "https://umjicanvas.com"
+    tipStr = f"(Default: {oldConfig.get('token', '')})" if oldConfig else ""
+    token = input(f"Canvas access token{tipStr}:").strip()
+    if not token:
+        token = oldConfig.get('token', '')
+    tipStr = f"(Default: {' '.join(oldConfig.get('courseCodes', list()))})" if oldConfig else ""
+    courseCodes = input(
+        f"Courses to sync in course codes(split with space){tipStr}:").strip(
+        ).split()
+    if not courseCodes:
+        courseCodes = oldConfig.get('courseCodes', list())
+    tipStr = f"(Default: {' '.join([str(item) for item in oldConfig.get('courseIDs', list())])})" if oldConfig else ""
+    courseIDs = input(
+        f"Courses to sync in course ID(split with space){tipStr}:").strip(
+        ).split()
+    if not courseIDs:
+        courseIDs = oldConfig.get('courseIDs', list())
+    courseIDs = [int(courseID) for courseID in courseIDs]
+    tipStr = f"(Default: {oldConfig.get('downloadDir', os.path.abspath(''))})"
+    downloadDir = input(f"Path to save canvas files{tipStr}:").strip()
+    if not downloadDir:
+        downloadDir = oldConfig.get('downloadDir', os.path.abspath(''))
+    tipStr = f"(Default: {oldConfig.get('filesizeThresh', '')})" if oldConfig else f"(Default: 250)"
+    filesizeThresh = input(
+        f"Maximum file size to download(MB){tipStr}:").strip()
     try:
-        url = input("Canvas url(Default: https://umjicanvas.com):").strip()
-        if not url:
-            url = "https://umjicanvas.com"
-        tipStr = f"(Default: {oldConfig.get('token', '')})" if oldConfig else ""
-        token = input(f"Canvas access token{tipStr}:").strip()
-        if not token:
-            token = oldConfig.get('token', '')
-        tipStr = f"(Default: {' '.join(oldConfig.get('courseCodes', list()))})" if oldConfig else ""
-        courseCodes = input(
-            f"Courses to sync in course codes(split with space){tipStr}:"
-        ).strip().split()
-        if not courseCodes:
-            courseCodes = oldConfig.get('courseCodes', list())
-        tipStr = f"(Default: {' '.join([str(item) for item in oldConfig.get('courseIDs', list())])})" if oldConfig else ""
-        courseIDs = input(
-            f"Courses to sync in course ID(split with space){tipStr}:").strip(
-            ).split()
-        if not courseIDs:
-            courseIDs = oldConfig.get('courseIDs', list())
-        courseIDs = [int(courseID) for courseID in courseIDs]
-        tipStr = f"(Default: {oldConfig.get('downloadDir', os.path.abspath(''))})"
-        downloadDir = input(f"Path to save canvas files{tipStr}:").strip()
-        if not downloadDir:
-            downloadDir = oldConfig.get('downloadDir', os.path.abspath(''))
-        tipStr = f"(Default: {oldConfig.get('filesizeThresh', '')})" if oldConfig else f"(Default: 250)"
-        filesizeThresh = input(
-            f"Maximum file size to download(MB){tipStr}:").strip()
-        try:
-            filesizeThresh = float(filesizeThresh)
-        except:
-            filesizeThresh = 250
-        json.dump(
-            {
-                "canvasURL": url,
-                "token": token,
-                "courseCodes": courseCodes,
-                "courseIDs": courseIDs,
-                "downloadDir": downloadDir,
-                "filesizeThresh": filesizeThresh
-            },
-            open(CONFIG_PATH, mode='w', encoding='utf-8'),
-            indent=4)
-    except Exception as e:
-        print(f"\nError: {e.__class__.__name__}. Creating config file fails!")
-        exit(1)
+        filesizeThresh = float(filesizeThresh)
+    except:
+        filesizeThresh = 250
+    json.dump(
+        {
+            "canvasURL": url,
+            "token": token,
+            "courseCodes": courseCodes,
+            "courseIDs": courseIDs,
+            "downloadDir": downloadDir,
+            "filesizeThresh": filesizeThresh
+        },
+        open(CONFIG_PATH, mode='w', encoding='utf-8'),
+        indent=4)
 
 
 def run():
@@ -480,7 +477,15 @@ def run():
         if args.r or not os.path.exists(configPath):
             if not os.path.exists(configPath):
                 print('Config file not exist, creating...')
-            initConfig()
+            try:
+                initConfig()
+            except Exception as e:
+                print(
+                    f"\nError: {e.__class__.__name__}. Failed to create config file."
+                )
+                if args.debug:
+                    print(traceback.format_exc())
+                exit(1)
             if args.r:
                 return
         config = json.load(open(configPath, 'r', encoding='UTF-8'))
@@ -490,6 +495,8 @@ def run():
         Syncer.sync()
     except ConnectionError as e:
         print("\nConnection Error. Please check your network and your token!")
+        if args.debug:
+            print(traceback.format_exc())
         exit(1)
     except Exception as e:
         print(
