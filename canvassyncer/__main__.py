@@ -239,6 +239,7 @@ class CanvasSyncer:
             if not files:
                 break
             for f in files:
+                if f['folder_id'] not in folders.keys(): continue
                 f['display_name'] = re.sub(r"[\/\\\:\*\?\"\<\>\|]", "_",
                                            f['display_name'])
                 path = f"{folders[f['folder_id']]}/{f['display_name']}"
