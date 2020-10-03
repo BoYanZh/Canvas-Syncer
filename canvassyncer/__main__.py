@@ -17,7 +17,7 @@ from urllib3.util.retry import Retry
 from tqdm import tqdm
 import ntpath
 
-__version__ = "1.2.9"
+__version__ = "1.2.10"
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            ".canvassyncer.json")
 MAX_DOWNLOAD_COUNT = 8
