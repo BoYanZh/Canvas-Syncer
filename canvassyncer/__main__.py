@@ -191,16 +191,22 @@ class CanvasSyncer:
 
     def createFolders(self, courseID, folders):
         for folder in folders.values():
-            path = os.path.join(self.downloadDir,
-                                f"{self.courseCode[courseID]}{folder}")
+            if self.config['no_subfolder']:
+                path = os.path.join(self.downloadDir, folder[1:])
+            else:
+                path = os.path.join(self.downloadDir,
+                                    f"{self.courseCode[courseID]}{folder}")
             if not os.path.exists(path):
                 os.makedirs(path)
 
     def getLocalFiles(self, courseID, folders):
         localFiles = []
         for folder in folders.values():
-            path = os.path.join(self.downloadDir,
-                                f"{self.courseCode[courseID]}{folder}")
+            if self.config['no_subfolder']:
+                path = os.path.join(self.downloadDir, folder[1:])
+            else:
+                path = os.path.join(self.downloadDir,
+                                    f"{self.courseCode[courseID]}{folder}")
             localFiles += [
                 os.path.join(folder, f).replace('\\', '/').replace('//', '/')
                 for f in os.listdir(path)
@@ -289,8 +295,11 @@ class CanvasSyncer:
         for fileName, (fileUrl, fileModifiedTimeStamp) in files.items():
             if not fileUrl:
                 continue
-            path = os.path.join(self.downloadDir,
-                                f"{self.courseCode[courseID]}{fileName}")
+            if self.config['no_subfolder']:
+                path = os.path.join(self.downloadDir, fileName[1:])
+            else:
+                path = os.path.join(self.downloadDir,
+                                    f"{self.courseCode[courseID]}{fileName}")
             path = path.replace('\\', '/').replace('//', '/')
             if fileName in localFiles:
                 localCreatedTimeStamp = int(os.path.getctime(path))
@@ -457,6 +466,9 @@ def run():
         parser.add_argument('-y',
                             help='confirm all prompts',
                             action="store_true")
+        parser.add_argument('--no-subfolder',
+                            help='do not create a course code named subfolder when synchronizing files',
+                            action="store_true")
         parser.add_argument('-p',
                             '--path',
                             help='appoint config file path',
@@ -492,6 +504,7 @@ def run():
         config = json.load(open(configPath, 'r', encoding='UTF-8'))
         config['y'] = args.y
         config['proxies'] = args.proxy
+        config['no_subfolder'] = args.no_subfolder
         Syncer = CanvasSyncer(config)
         Syncer.sync()
     except ConnectionError as e:
