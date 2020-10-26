@@ -244,6 +244,7 @@ class CanvasSyncer:
             files = self.sessGet(url).json()
             if not files:
                 break
+            if type(files) is dict: break
             for f in files:
                 if f['folder_id'] not in folders.keys(): continue
                 f['display_name'] = re.sub(r"[\/\\\:\*\?\"\<\>\|]", "_",
