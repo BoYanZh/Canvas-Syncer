@@ -21,6 +21,7 @@ Optional arguments:
   -h, --help            show this help message and exit
   -r                    recreate config file
   -y                    confirm all prompts
+  --no-subfolder        do not create a course code named subfolder when synchronizing files
   -p PATH, --path PATH  appoint config file path
   -x PROXY, --proxy PROXY
                         download proxy
