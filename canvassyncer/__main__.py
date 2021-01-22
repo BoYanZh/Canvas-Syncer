@@ -233,6 +233,8 @@ class CanvasSyncer:
                     "course files", "")
                 if not res[folder['id']]:
                     res[folder['id']] = '/'
+                res[folder['id']] = re.sub(r"[\/\\\:\*\?\"\<\>\|]", "_",
+                                           res[folder['id']])
             page += 1
         return res
 
