@@ -12,7 +12,7 @@ import aiofiles
 import aiohttp
 from tqdm import tqdm
 
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 CONFIG_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), ".canvassyncer.json"
 )
@@ -428,7 +428,7 @@ def initConfig():
     )
 
 
-async def run():
+async def sync():
     Syncer, args = None, None
     try:
         parser = argparse.ArgumentParser(description="A Simple Canvas File Syncer")
@@ -491,11 +491,15 @@ async def run():
             print(traceback.format_exc())
 
 
-if __name__ == "__main__":
+def run():
     asyncio.set_event_loop(asyncio.new_event_loop())
     loop = asyncio.get_event_loop()
     try:
-        loop.run_until_complete(run())
+        loop.run_until_complete(sync())
     except KeyboardInterrupt as e:
         print("\nOperation cancelled by user, exiting...")
         exit(1)
+
+
+if __name__ == "__main__":
+    run()
