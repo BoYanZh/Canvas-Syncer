@@ -69,24 +69,21 @@ class CanvasSyncer:
     async def close(self):
         await self.sess.close()
 
-    async def sessGetJson(self, *args, **kwargs):
-        if kwargs.get("timeout") is None:
-            kwargs["timeout"] = 10
-        if kwargs.get("header") is None:
-            kwargs["headers"] = dict()
+    def setSessionArgs(self, **kwargs):
+        kwargs["timeout"] = kwargs.get("timeout", 10)
+        kwargs["headers"] = kwargs.get("headers", {})
         kwargs["headers"]["Authorization"] = f"Bearer {self.config['token']}"
         kwargs["proxy"] = self.config.get("proxies")
+        return kwargs
+
+    async def sessGetJson(self, *args, **kwargs):
+        kwargs = self.setSessionArgs(**kwargs)
         async with self.sem:
             async with self.sess.get(*args, **kwargs) as resp:
                 return await resp.json()
 
     async def sessHead(self, *args, **kwargs):
-        if kwargs.get("timeout") is None:
-            kwargs["timeout"] = 10
-        if kwargs.get("header") is None:
-            kwargs["headers"] = dict()
-        kwargs["headers"]["Authorization"] = f"Bearer {self.config['token']}"
-        kwargs["proxy"] = self.config.get("proxies")
+        kwargs = self.setSessionArgs(**kwargs)
         async with self.sem:
             async with self.sess.head(*args, **kwargs) as resp:
                 return resp.headers
@@ -296,8 +293,6 @@ class CanvasSyncer:
         )
 
     def checkNewFiles(self):
-        if not self.newFiles:
-            return
         if self.skipfiles:
             print(
                 "These file(s) will not be synced due to their size"
@@ -305,9 +300,10 @@ class CanvasSyncer:
             )
             for f in self.skipfiles:
                 print(f)
-        print(f"Start to download {len(self.newInfo)} file(s)!")
-        for s in self.newInfo:
-            print(s)
+        if self.newFiles:
+            print(f"Start to download {len(self.newInfo)} file(s)!")
+            for s in self.newInfo:
+                print(s)
 
     def checkLaterFiles(self):
         if not self.laterFiles:
@@ -315,11 +311,7 @@ class CanvasSyncer:
         print("These file(s) have later version on canvas:")
         for s in self.laterInfo:
             print(s)
-        if not self.confirmAll:
-            print("Update all?(Y/n) ", end="")
-            isDownload = input()
-        else:
-            isDownload = "Y"
+        isDownload = "Y" if self.confirmAll else input("Update all?(Y/n) ")
         if isDownload in ["n", "N"]:
             return
         print(f"Start to download {len(self.laterInfo)} file(s)!")
@@ -362,7 +354,7 @@ class CanvasSyncer:
 
 
 def initConfig():
-    oldConfig = dict()
+    oldConfig = {}
     if os.path.exists(CONFIG_PATH):
         oldConfig = json.load(open(CONFIG_PATH))
     elif os.path.exists("./canvassyncer.json"):
@@ -376,9 +368,7 @@ def initConfig():
     if not token:
         token = oldConfig.get("token", "")
     tipStr = (
-        f"(Default: {' '.join(oldConfig.get('courseCodes', list()))})"
-        if oldConfig
-        else ""
+        f"(Default: {' '.join(oldConfig.get('courseCodes', []))})" if oldConfig else ""
     )
     courseCodes = (
         input(f"Courses to sync in course codes(split with space){tipStr}:")
@@ -386,9 +376,9 @@ def initConfig():
         .split()
     )
     if not courseCodes:
-        courseCodes = oldConfig.get("courseCodes", list())
+        courseCodes = oldConfig.get("courseCodes", [])
     tipStr = (
-        f"(Default: {' '.join([str(item) for item in oldConfig.get('courseIDs', list())])})"
+        f"(Default: {' '.join([str(item) for item in oldConfig.get('courseIDs', [])])})"
         if oldConfig
         else ""
     )
@@ -398,7 +388,7 @@ def initConfig():
         .split()
     )
     if not courseIDs:
-        courseIDs = oldConfig.get("courseIDs", list())
+        courseIDs = oldConfig.get("courseIDs", [])
     courseIDs = [int(courseID) for courseID in courseIDs]
     tipStr = f"(Default: {oldConfig.get('downloadDir', os.path.abspath(''))})"
     downloadDir = input(f"Path to save canvas files{tipStr}:").strip()
@@ -493,9 +483,8 @@ async def sync():
 
 def run():
     asyncio.set_event_loop(asyncio.new_event_loop())
-    loop = asyncio.get_event_loop()
     try:
-        loop.run_until_complete(sync())
+        asyncio.get_event_loop().run_until_complete(sync())
     except KeyboardInterrupt as e:
         print("\nOperation cancelled by user, exiting...")
         exit(1)
