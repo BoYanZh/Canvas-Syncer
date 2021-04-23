@@ -1,6 +1,6 @@
 # Canvas-Syncer
 
-A script that let you sync your local files / ??? with canvas.
+A async python script that sync files and folders across Canvas Files and local.
 
 ## Usage
 
@@ -23,6 +23,8 @@ Optional arguments:
   -y                    confirm all prompts
   --no-subfolder        do not create a course code named subfolder when synchronizing files
   -p PATH, --path PATH  appoint config file path
+  -c CONNECTION, --connection CONNECTION
+                        max connection count with server
   -x PROXY, --proxy PROXY
                         download proxy
   -V, --version         show program's version number and exit

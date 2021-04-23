@@ -1,196 +1,95 @@
 import argparse
+import asyncio
 import json
+import ntpath
 import os
 import re
-import traceback
-import requests
-import requests.exceptions
-import threading
 import time
-import urllib3.exceptions
-from datetime import timezone, datetime
-from functools import partial
-from queue import Queue
-from requests.adapters import HTTPAdapter
-from threading import Thread
-from urllib3.util.retry import Retry
-from tqdm import tqdm
-import ntpath
+import traceback
+from datetime import datetime, timezone
 
-__version__ = "1.2.11"
+import aiofiles
+import aiohttp
+from tqdm import tqdm
+
+__version__ = "2.0.0"
 CONFIG_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), ".canvassyncer.json"
 )
-MAX_DOWNLOAD_COUNT = 8
-_sentinel = object()
-
-print = partial(print, flush=True)
+PAGES_PER_TIME = 8
 
 
-class MultithreadDownloader:
-    blockSize = 512
+class AsyncDownloader:
+    def __init__(self, sess, sem, config):
+        self.sess: aiohttp.ClientSession = sess
+        self.sem = sem
+        self.config = config
 
-    def __init__(self, session, maxThread):
-        self.sess = session
-        self.maxThread = maxThread
-        self.currentDownload = []
-        self.countLock = threading.Lock()
-        self.taskQueue = Queue()
-        self.downloadedCnt = 0
-        self.totalCnt = 0
-        self.totalSize = 0
-        self.tqdm = None
-        self.stopSignal = False
-
-    def downloadFile(self, i, queue):
-        while True:
-            if self.stopSignal:
-                self.downloadedCnt = self.totalCnt
-                break
-            src, dst = queue.get()
-            if src is _sentinel:
-                queue.put([src, dst])
-                break
-            self.currentDownload[i] = dst.split("/")[-1].split("\\")[-1]
-            tmpFilePath = ""
-            try:
-                r = self.sess.get(src, timeout=10, stream=True)
-                tmpFilePath = f"{dst}.tmp.{int(time.time())}"
-                with open(tmpFilePath, "wb") as fd:
-                    for chunk in r.iter_content(MultithreadDownloader.blockSize):
-                        self.tqdm.update(len(chunk))
-                        fd.write(chunk)
-                        if self.stopSignal:
+    async def downloadOne(self, src, dst):
+        async with self.sem:
+            async with self.sess.get(src, proxy=self.config.get("proxies")) as res:
+                if res.status != 200:
+                    print(f"{src} Download failed: {res.status}")
+                    return
+                async with aiofiles.open(dst, "+wb") as f:
+                    while True:
+                        chunk = await res.content.read(1024 * 4)
+                        if not chunk:
                             break
-                os.rename(tmpFilePath, dst)
-            except Exception as e:
-                print(f"\nError: {e.__class__.__name__}. Download {dst} fails!")
-            finally:
-                if os.path.exists(tmpFilePath):
-                    os.remove(tmpFilePath)
-                with self.countLock:
-                    self.downloadedCnt += 1
+                        await f.write(chunk)
+                        self.tqdm.update(len(chunk))
 
-    def init(self):
-        self.taskQueue = Queue()
-        self.downloadedCnt = 0
-        self.totalCnt = 0
-        self.downloadingFileName = "None"
-        self.totalSize = 0
-        self.stopSignal = False
-        self.tqdm = None
-        self.currentDownload = ["" for i in range(self.maxThread)]
-
-    def create(self, infos, totalSize=0):
-        self.init()
+    async def start(self, infos, totalSize=0):
         self.totalSize = totalSize
-        self.tqdm = tqdm(total=totalSize, unit="iB", unit_scale=True)
-        for src, dst in infos:
-            self.taskQueue.put((src, dst))
-            self.totalCnt += 1
-        self.taskQueue.put((_sentinel, _sentinel))
-
-    def start(self):
-        for i in range(self.maxThread):
-            t = Thread(target=self.downloadFile, args=(i, self.taskQueue), daemon=True)
-            t.start()
-
-    def stop(self):
-        self.stopSignal = True
-        if self.tqdm:
-            self.tqdm.close()
-        print("\nOperation cancelled by user, exiting...")
-        while not self.finished:
-            time.sleep(0.1)
-
-    @property
-    def finished(self):
-        return self.downloadedCnt >= self.totalCnt
-
-    def waitTillFinish(self):
-        word = "None"
-        downloadingFileName = ""
-        while not self.finished:
-            for fileName in reversed(self.currentDownload):
-                if fileName:
-                    downloadingFileName = fileName
-                    break
-            if word not in (downloadingFileName + " " * 5) * 2:
-                word = downloadingFileName + " " * 5
-            if len(word) <= 20:
-                self.tqdm.set_description((word + " " * 10)[:15])
-            else:
-                self.tqdm.set_description(word[:15])
-            # print("\r{:5d}/{:5d} Downloading... {}".format(
-            #     self.downloadedCnt, self.totalCnt, word[:15]),
-            #       end='')
-            if len(word) > 20:
-                word = word[1:] + word[0]
-            time.sleep(0.1)
-        if self.tqdm:
-            self.tqdm.close()
-        # if self.totalCnt > 0:
-        #     print("\r{:5d}/{:5d} Finish!        {}".format(
-        #         self.downloadedCnt, self.totalCnt, ' ' * 15))
+        self.tqdm = tqdm(total=totalSize, unit="B", unit_scale=True)
+        self.tasks = [self.downloadOne(src, dst) for src, dst in infos]
+        return await asyncio.gather(*self.tasks)
 
 
 class CanvasSyncer:
     def __init__(self, config):
         self.confirmAll = config["y"]
         self.config = config
-        self.sess = requests.Session()
-        retryStrategy = Retry(
-            total=5,
-            status_forcelist=[429, 500, 502, 503, 504],
-            method_whitelist=["HEAD", "GET", "OPTIONS"],
-        )
-        adapter = HTTPAdapter(max_retries=retryStrategy)
-        self.sess.mount("https://", adapter)
-        self.sess.mount("http://", adapter)
+        self.sess = aiohttp.ClientSession()
+        self.sem = asyncio.Semaphore(config["connection_count"])
         self.downloadSize = 0
         self.laterDownloadSize = 0
         self.courseCode = {}
         self.baseurl = self.config["canvasURL"] + "/api/v1"
         self.downloadDir = self.config["downloadDir"]
         self.newInfo = []
+        self.newFiles = []
         self.laterFiles = []
         self.laterInfo = []
         self.skipfiles = []
-        self.filesLock = threading.Lock()
-        self.taskQueue = Queue()
-        self.downloader = MultithreadDownloader(self.sess, MAX_DOWNLOAD_COUNT)
+        self.downloader = AsyncDownloader(self.sess, self.sem, self.config)
         if not os.path.exists(self.downloadDir):
             os.mkdir(self.downloadDir)
 
-    def sessGet(self, *args, **kwargs):
-        if kwargs.get("timeout") is None:
-            kwargs["timeout"] = 10
-        if kwargs.get("header") is None:
-            kwargs["headers"] = dict()
-        kwargs["headers"]["Authorization"] = f"Bearer {self.config['token']}"
-        kwargs["proxies"] = self.config.get("proxies")
-        try:
-            return self.sess.get(*args, **kwargs)
-        except (
-            urllib3.exceptions.MaxRetryError,
-            requests.exceptions.ConnectionError,
-        ) as e:
-            raise ConnectionError(e)
+    async def close(self):
+        await self.sess.close()
 
-    def sessHead(self, *args, **kwargs):
+    async def sessGetJson(self, *args, **kwargs):
         if kwargs.get("timeout") is None:
             kwargs["timeout"] = 10
         if kwargs.get("header") is None:
             kwargs["headers"] = dict()
         kwargs["headers"]["Authorization"] = f"Bearer {self.config['token']}"
-        kwargs["proxies"] = self.config.get("proxies")
-        try:
-            return self.sess.head(*args, **kwargs)
-        except (
-            urllib3.exceptions.MaxRetryError,
-            requests.exceptions.ConnectionError,
-        ) as e:
-            raise ConnectionError(e)
+        kwargs["proxy"] = self.config.get("proxies")
+        async with self.sem:
+            async with self.sess.get(*args, **kwargs) as resp:
+                return await resp.json()
+
+    async def sessHead(self, *args, **kwargs):
+        if kwargs.get("timeout") is None:
+            kwargs["timeout"] = 10
+        if kwargs.get("header") is None:
+            kwargs["headers"] = dict()
+        kwargs["headers"]["Authorization"] = f"Bearer {self.config['token']}"
+        kwargs["proxy"] = self.config.get("proxies")
+        async with self.sem:
+            async with self.sess.head(*args, **kwargs) as resp:
+                return resp.headers
 
     def createFolders(self, courseID, folders):
         for folder in folders.values():
@@ -219,160 +118,203 @@ class CanvasSyncer:
             ]
         return localFiles
 
-    def getCourseFolders(self, courseID):
-        return [folder for folder in self.getCourseFoldersWithID(courseID).values()]
-
-    def getCourseFoldersWithID(self, courseID):
+    async def getCourseFoldersWithIDHelper(self, courseID, page):
         res = {}
-        page = 1
-        while True:
-            url = f"{self.baseurl}/courses/{courseID}/folders?page={page}"
-            folders = self.sessGet(url).json()
-            if not folders:
-                break
-            for folder in folders:
-                res[folder["id"]] = folder["full_name"].replace("course files", "")
-                if not res[folder["id"]]:
-                    res[folder["id"]] = "/"
-                res[folder["id"]] = re.sub(
-                    r"[\\\:\*\?\"\<\>\|]", "_", res[folder["id"]]
-                )
-            page += 1
+        url = f"{self.baseurl}/courses/{courseID}/folders?page={page}"
+        folders = await self.sessGetJson(url)
+        if not folders:
+            return res
+        for folder in folders:
+            if folder["full_name"].startswith("course files"):
+                folder["full_name"] = folder["full_name"][len("course files") :]
+            res[folder["id"]] = folder["full_name"]
+            if not res[folder["id"]]:
+                res[folder["id"]] = "/"
+            res[folder["id"]] = re.sub(r"[\\\:\*\?\"\<\>\|]", "_", res[folder["id"]])
         return res
 
-    def getCourseFiles(self, courseID):
-        folders, res = self.getCourseFoldersWithID(courseID), {}
+    async def getCourseFoldersWithID(self, courseID):
+        folders = {}
         page = 1
-        while True:
-            url = f"{self.baseurl}/courses/{courseID}/files?page={page}"
-            files = self.sessGet(url).json()
-            if not files:
-                break
-            if type(files) is dict:
-                break
-            for f in files:
-                if f["folder_id"] not in folders.keys():
-                    continue
-                f["display_name"] = re.sub(
-                    r"[\/\\\:\*\?\"\<\>\|]", "_", f["display_name"]
-                )
-                path = f"{folders[f['folder_id']]}/{f['display_name']}"
-                path = path.replace("\\", "/").replace("//", "/")
-                dt = datetime.strptime(f["modified_at"], "%Y-%m-%dT%H:%M:%SZ")
-                modifiedTimeStamp = dt.replace(tzinfo=timezone.utc).timestamp()
-                res[path] = (f["url"], int(modifiedTimeStamp))
-            page += 1
-        return folders, res
+        endOfPage = False
+        while not endOfPage:
+            pageRes = await asyncio.gather(
+                *[
+                    self.getCourseFoldersWithIDHelper(courseID, page + i)
+                    for i in range(PAGES_PER_TIME)
+                ]
+            )
+            for item in pageRes:
+                if not item:
+                    endOfPage = True
+                folders.update(item)
+            page += PAGES_PER_TIME
+        return folders
 
-    def getCourseCode(self, courseID):
+    async def getCourseFilesHelper(self, courseID, page, folders):
+        files = {}
+        url = f"{self.baseurl}/courses/{courseID}/files?page={page}"
+        canvasFiles = await self.sessGetJson(url)
+        if not canvasFiles or type(canvasFiles) is dict:
+            return files
+        for f in canvasFiles:
+            if f["folder_id"] not in folders.keys():
+                continue
+            f["display_name"] = re.sub(r"[\/\\\:\*\?\"\<\>\|]", "_", f["display_name"])
+            path = f"{folders[f['folder_id']]}/{f['display_name']}"
+            path = path.replace("\\", "/").replace("//", "/")
+            dt = datetime.strptime(f["modified_at"], "%Y-%m-%dT%H:%M:%SZ")
+            modifiedTimeStamp = dt.replace(tzinfo=timezone.utc).timestamp()
+            files[path] = (f["url"], int(modifiedTimeStamp))
+        return files
+
+    async def getCourseFiles(self, courseID):
+        files = {}
+        page = 1
+        folders = await self.getCourseFoldersWithID(courseID)
+        endOfPage = False
+        while not endOfPage:
+            pageRes = await asyncio.gather(
+                *[
+                    self.getCourseFilesHelper(courseID, page + i, folders)
+                    for i in range(PAGES_PER_TIME)
+                ]
+            )
+            for item in pageRes:
+                if not item:
+                    endOfPage = True
+                files.update(item)
+            page += PAGES_PER_TIME
+        return folders, files
+
+    async def getCourseCode(self, courseID):
         url = f"{self.baseurl}/courses/{courseID}"
-        return self.sessGet(url).json()["course_code"]
+        sessRes = await self.sessGetJson(url)
+        return sessRes["course_code"]
 
-    def getCourseID(self):
+    async def getCourseIdByCourseCodeHelper(self, page, lowerCourseCodes):
         res = {}
-        page = 1
-        if self.config.get("courseCodes"):
-            lowerCourseCodes = [s.lower() for s in self.config["courseCodes"]]
-            while True:
-                url = f"{self.baseurl}/courses?page={page}"
-                courses = self.sessGet(url).json()
-                if isinstance(courses, dict) and courses.get("errors"):
-                    errMsg = courses["errors"][0].get("message", "unknown error.")
-                    print(f"\nError: {errMsg}")
-                    exit(1)
-                if not courses:
-                    break
-                for course in courses:
-                    if course.get("course_code", "").lower() in lowerCourseCodes:
-                        res[course["id"]] = course["course_code"]
-                        lowerCourseCodes.remove(course.get("course_code", "").lower())
-                page += 1
-        if self.config.get("courseIDs"):
-            for courseID in self.config["courseIDs"]:
-                res[courseID] = self.getCourseCode(courseID)
+        url = f"{self.baseurl}/courses?page={page}"
+        courses = await self.sessGetJson(url)
+        if isinstance(courses, dict) and courses.get("errors"):
+            errMsg = courses["errors"][0].get("message", "unknown error.")
+            print(f"\nError: {errMsg}")
+            exit(1)
+        if not courses:
+            return res
+        for course in courses:
+            if course.get("course_code", "").lower() in lowerCourseCodes:
+                res[course["id"]] = course["course_code"]
+                lowerCourseCodes.remove(course.get("course_code", "").lower())
         return res
 
-    def getCourseTaskInfo(self, courseID):
-        folders, files = self.getCourseFiles(courseID)
+    async def getCourseIdByCourseCode(self):
+        page = 1
+        lowerCourseCodes = [s.lower() for s in self.config["courseCodes"]]
+        endOfPage = False
+        while not endOfPage:
+            pageRes = await asyncio.gather(
+                *[
+                    self.getCourseIdByCourseCodeHelper(page + i, lowerCourseCodes)
+                    for i in range(PAGES_PER_TIME)
+                ]
+            )
+            for item in pageRes:
+                if not item:
+                    endOfPage = True
+                self.courseCode.update(item)
+            page += PAGES_PER_TIME
+
+    async def getCourseCodeByCourseIDHelper(self, courseID):
+        self.courseCode[courseID] = await self.getCourseCode(courseID)
+
+    async def getCourseCodeByCourseID(self):
+        await asyncio.gather(
+            *[
+                self.getCourseCodeByCourseIDHelper(courseID)
+                for courseID in self.config["courseIDs"]
+            ]
+        )
+
+    async def getCourseID(self):
+        coros = []
+        if self.config.get("courseCodes"):
+            coros.append(self.getCourseIdByCourseCode())
+        if self.config.get("courseIDs"):
+            coros.append(self.getCourseCodeByCourseID())
+        await asyncio.gather(*coros)
+
+    async def getCourseTaskInfoHelper(
+        self, courseID, localFiles, fileName, fileUrl, fileModifiedTimeStamp
+    ):
+        if not fileUrl:
+            return
+        if self.config["no_subfolder"]:
+            path = os.path.join(self.downloadDir, fileName[1:])
+        else:
+            path = os.path.join(
+                self.downloadDir, f"{self.courseCode[courseID]}{fileName}"
+            )
+        path = path.replace("\\", "/").replace("//", "/")
+        if fileName in localFiles and fileModifiedTimeStamp <= os.path.getctime(path):
+            return
+        response = await self.sessHead(fileUrl)
+        fileSize = int(response.get("content-length", 0))
+        if fileName in localFiles:
+            self.laterDownloadSize += fileSize
+            self.laterFiles.append((fileUrl, path))
+            self.laterInfo.append(
+                f"{self.courseCode[courseID]}{fileName} ({round(fileSize / 1000000, 2)}MB)"
+            )
+            return
+        if fileSize > self.config["filesizeThresh"] * 1000000:
+            print(
+                f"{self.courseCode[courseID]}{fileName} ({round(fileSize / 1000000, 2)}MB) ignored, too large."
+            )
+            aiofiles.open(path, "w").close()
+            self.skipfiles.append(
+                f"{self.courseCode[courseID]}{fileName} ({round(fileSize / 1000000, 2)}MB)"
+            )
+            return
+        self.newInfo.append(
+            f"{self.courseCode[courseID]}{fileName} ({round(fileSize / 1000000, 2)}MB)"
+        )
+        self.downloadSize += fileSize
+        self.newFiles.append((fileUrl, path))
+
+    async def getCourseTaskInfo(self, courseID):
+        folders, files = await self.getCourseFiles(courseID)
         self.createFolders(courseID, folders)
         localFiles = self.getLocalFiles(courseID, folders)
-        res = []
-        for fileName, (fileUrl, fileModifiedTimeStamp) in files.items():
-            if not fileUrl:
-                continue
-            if self.config["no_subfolder"]:
-                path = os.path.join(self.downloadDir, fileName[1:])
-            else:
-                path = os.path.join(
-                    self.downloadDir, f"{self.courseCode[courseID]}{fileName}"
+        await asyncio.gather(
+            *[
+                self.getCourseTaskInfoHelper(
+                    courseID, localFiles, fileName, fileUrl, fileModifiedTimeStamp
                 )
-            path = path.replace("\\", "/").replace("//", "/")
-            if fileName in localFiles:
-                localCreatedTimeStamp = int(os.path.getctime(path))
-                if fileModifiedTimeStamp <= localCreatedTimeStamp:
-                    continue
-                response = self.sessHead(fileUrl)
-                fileSize = int(response.headers.get("content-length", 0))
-                self.laterDownloadSize += fileSize
-                self.laterFiles.append((fileUrl, path))
-                self.laterInfo.append(
-                    f"{self.courseCode[courseID]}{fileName} ({round(fileSize / 2**20, 2)}MB)"
-                )
-                continue
-            response = self.sessHead(fileUrl)
-            fileSize = int(response.headers.get("content-length", 0))
-            if fileSize / 2 ** 20 > self.config["filesizeThresh"]:
-                if not self.confirmAll:
-                    print(
-                        f"\nTarget file: {self.courseCode[courseID]}{fileName} is too large ({round(fileSize / 2**20, 2)}MB), ignore?(Y/n) ",
-                        end="",
-                    )
-                    isDownload = input()
-                else:
-                    print(
-                        f"\nTarget file: {self.courseCode[courseID]}{fileName} is too large ({round(fileSize / 2**20, 2)}MB), ignore. "
-                    )
-                    isDownload = "Y"
-                if isDownload not in ["n", "N"]:
-                    print("Creating empty file as scapegoat...")
-                    open(path, "w").close()
-                    self.skipfiles.append(path)
-                    continue
-            self.newInfo.append(
-                f"{self.courseCode[courseID]}{fileName} ({round(fileSize / 2**20, 2)}MB)"
-            )
-            self.downloadSize += fileSize
-            res.append((fileUrl, path))
-        return res
+                for fileName, (fileUrl, fileModifiedTimeStamp) in files.items()
+            ]
+        )
 
     def checkNewFiles(self):
-        print("\rFinding files on canvas...", end="")
-        allInfos = []
-        for courseID in self.courseCode.keys():
-            for info in self.getCourseTaskInfo(courseID):
-                allInfos.append(info)
-        if len(allInfos) == 0:
-            print("\rAll local files are synced!")
-        else:
-            print(f"\rFind {len(allInfos)} new files!           ")
-            if self.skipfiles:
-                print(
-                    f"The following file(s) will not be synced due to their size (over {self.config['filesizeThresh']} MB):"
-                )
-                [print(f) for f in self.skipfiles]
+        if not self.newFiles:
+            return
+        if self.skipfiles:
             print(
-                f"Start to download following files! Total size: {round(self.downloadSize / 2**20, 2)}MB"
+                "These file(s) will not be synced due to their size"
+                + f" (over {self.config['filesizeThresh']} MB):"
             )
-            [print(s) for s in self.newInfo]
-            self.downloader.create(allInfos, self.downloadSize)
-            self.downloader.start()
-            self.downloader.waitTillFinish()
+            for f in self.skipfiles:
+                print(f)
+        print(f"Start to download {len(self.newInfo)} file(s)!")
+        for s in self.newInfo:
+            print(s)
 
     def checkLaterFiles(self):
         if not self.laterFiles:
             return
         print("These file(s) have later version on canvas:")
-        [print(s) for s in self.laterInfo]
+        for s in self.laterInfo:
+            print(s)
         if not self.confirmAll:
             print("Update all?(Y/n) ", end="")
             isDownload = input()
@@ -380,9 +322,7 @@ class CanvasSyncer:
             isDownload = "Y"
         if isDownload in ["n", "N"]:
             return
-        print(
-            f"Start to download these files! Total size: {round(self.laterDownloadSize / 2**20, 2)}MB"
-        )
+        print(f"Start to download {len(self.laterInfo)} file(s)!")
         laterFiles = []
         for (fileUrl, path) in self.laterFiles:
             localCreatedTimeStamp = int(os.path.getctime(path))
@@ -401,16 +341,24 @@ class CanvasSyncer:
                 laterFiles.append((fileUrl, path))
             except Exception as e:
                 print(f"{e.__class__.__name__}! Skipped: {path}")
-        self.downloader.create(laterFiles, self.laterDownloadSize)
-        self.downloader.start()
-        self.downloader.waitTillFinish()
+        self.laterFiles = laterFiles
 
-    def sync(self):
-        print("\rGetting course IDs...", end="")
-        self.courseCode = self.getCourseID()
-        print(f"\rGet {len(self.courseCode)} available courses!")
+    async def sync(self):
+        print("Getting course IDs...")
+        await self.getCourseID()
+        print(f"Get {len(self.courseCode)} available courses!")
+        print("Finding files on canvas...")
+        await asyncio.gather(
+            *[self.getCourseTaskInfo(courseID) for courseID in self.courseCode.keys()]
+        )
+        if not self.newFiles and not self.laterFiles:
+            print("All local files are synced!")
+            return
         self.checkNewFiles()
         self.checkLaterFiles()
+        await self.downloader.start(
+            self.newFiles + self.laterFiles, self.downloadSize + self.laterDownloadSize
+        )
 
 
 def initConfig():
@@ -480,7 +428,7 @@ def initConfig():
     )
 
 
-def run():
+async def run():
     Syncer, args = None, None
     try:
         parser = argparse.ArgumentParser(description="A Simple Canvas File Syncer")
@@ -493,6 +441,13 @@ def run():
         )
         parser.add_argument(
             "-p", "--path", help="appoint config file path", default=CONFIG_PATH
+        )
+        parser.add_argument(
+            "-c",
+            "--connection",
+            help="max connection count with server",
+            default=16,
+            type=int,
         )
         parser.add_argument("-x", "--proxy", help="download proxy", default=None)
         parser.add_argument("-V", "--version", action="version", version=__version__)
@@ -517,24 +472,30 @@ def run():
         config["y"] = args.y
         config["proxies"] = args.proxy
         config["no_subfolder"] = args.no_subfolder
+        config["connection_count"] = args.connection
         Syncer = CanvasSyncer(config)
-        Syncer.sync()
+        await Syncer.sync()
+        await Syncer.close()
     except ConnectionError as e:
         print("\nConnection Error. Please check your network and your token!")
         if args.debug:
             print(traceback.format_exc())
         exit(1)
+    except KeyboardInterrupt as e:
+        raise (e)
     except Exception as e:
         print(
             f"\nUnexpected Error: {e.__class__.__name__}. Please check your network and your token!"
         )
         if args.debug:
             print(traceback.format_exc())
-    except KeyboardInterrupt as e:
-        if Syncer:
-            Syncer.downloader.stop()
-        exit(1)
 
 
 if __name__ == "__main__":
-    run()
+    asyncio.set_event_loop(asyncio.new_event_loop())
+    loop = asyncio.get_event_loop()
+    try:
+        loop.run_until_complete(run())
+    except KeyboardInterrupt as e:
+        print("\nOperation cancelled by user, exiting...")
+        exit(1)
