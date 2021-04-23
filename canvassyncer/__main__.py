@@ -155,7 +155,7 @@ class CanvasSyncer:
         files = {}
         url = f"{self.baseurl}/courses/{courseID}/files?page={page}"
         canvasFiles = await self.sessGetJson(url)
-        if not canvasFiles or type(canvasFiles) is dict:
+        if not canvasFiles or isinstance(canvasFiles, dict):
             return files
         for f in canvasFiles:
             if f["folder_id"] not in folders.keys():
