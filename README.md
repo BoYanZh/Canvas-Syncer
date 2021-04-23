@@ -1,5 +1,9 @@
 # Canvas-Syncer
 
+[![MIT License](https://img.shields.io/apm/l/atomic-design-ui.svg?)](https://github.com/tterb/atomic-design-ui/blob/master/LICENSEs)
+[![CodeFactor](https://www.codefactor.io/repository/github/boyanzh/canvas-syncer/badge)](https://www.codefactor.io/repository/github/boyanzh/canvas-syncer)
+[![PyPi Version](https://img.shields.io/pypi/v/canvassyncer.svg)](https://pypi.org/pypi/canvassyncer)
+
 A async python script that sync files and folders across Canvas Files and local.
 
 ## Usage
@@ -17,7 +21,7 @@ You can use `canvassyncer -h` to get help.
 
 Optional arguments:
 
-```
+```text
   -h, --help            show this help message and exit
   -r                    recreate config file
   -y                    confirm all prompts
