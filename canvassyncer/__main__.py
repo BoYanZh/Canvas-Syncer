@@ -412,7 +412,7 @@ def initConfig():
     filesizeThresh = input(f"Maximum file size to download(MB){tipStr}:").strip()
     try:
         filesizeThresh = float(filesizeThresh)
-    except:
+    except Exception:
         filesizeThresh = 250
     json.dump(
         {
