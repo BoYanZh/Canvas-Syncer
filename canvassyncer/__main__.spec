@@ -4,7 +4,7 @@
 block_cipher = None
 
 
-a = Analysis(['canvassyncer\\__main__.py'],
+a = Analysis(['__main__.py'],
              pathex=[''],
              binaries=[],
              datas=[],
