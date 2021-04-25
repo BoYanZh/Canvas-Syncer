@@ -8,6 +8,12 @@ A async python script that sync files and folders across Canvas Files and local,
 
 ## Usage
 
+### Through Binary
+
+For Windows users, you can find binary(.exe) file here: <https://github.com/BoYanZh/Canvas-Syncer/releases>. Double click to run.
+
+### Through `pip`
+
 ```bash
 pip3 install canvassyncer
 canvassyncer
