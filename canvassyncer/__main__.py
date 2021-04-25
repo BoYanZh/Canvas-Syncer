@@ -40,10 +40,10 @@ class AsyncDownloader:
                         self.tqdm.update(len(chunk))
 
     async def start(self, infos, totalSize=0):
-        self.totalSize = totalSize
         self.tqdm = tqdm(total=totalSize, unit="B", unit_scale=True)
-        self.tasks = [self.downloadOne(src, dst) for src, dst in infos]
-        return await asyncio.gather(*self.tasks)
+        await asyncio.gather(
+            *[asyncio.create_task(self.downloadOne(src, dst)) for src, dst in infos]
+        )
 
 
 class CanvasSyncer:
@@ -228,7 +228,7 @@ class CanvasSyncer:
     async def getCourseCodeByCourseID(self):
         await asyncio.gather(
             *[
-                self.getCourseCodeByCourseIDHelper(courseID)
+                asyncio.create_task(self.getCourseCodeByCourseIDHelper(courseID))
                 for courseID in self.config["courseIDs"]
             ]
         )
@@ -341,7 +341,10 @@ class CanvasSyncer:
         print(f"Get {len(self.courseCode)} available courses!")
         print("Finding files on canvas...")
         await asyncio.gather(
-            *[self.getCourseTaskInfo(courseID) for courseID in self.courseCode.keys()]
+            *[
+                asyncio.create_task(self.getCourseTaskInfo(courseID))
+                for courseID in self.courseCode.keys()
+            ]
         )
         if not self.newFiles and not self.laterFiles:
             print("All local files are synced!")
