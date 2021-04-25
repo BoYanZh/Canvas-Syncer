@@ -82,18 +82,17 @@ class CanvasSyncer:
         return kwargs
 
     async def sessGetJson(self, *args, **kwargs):
-        kwargs = self.setSessionArgs(**kwargs)
         async with self.sem:
-            async with self.sess.get(*args, **kwargs) as resp:
+            async with self.sess.get(*args, **self.setSessionArgs(**kwargs)) as resp:
                 return await resp.json()
 
     async def sessHead(self, *args, **kwargs):
-        kwargs = self.setSessionArgs(**kwargs)
         async with self.sem:
-            async with self.sess.head(*args, **kwargs) as resp:
+            async with self.sess.head(*args, **self.setSessionArgs(**kwargs)) as resp:
                 return resp.headers
 
-    def createFolders(self, courseID, folders):
+    def prepareLocalFiles(self, courseID, folders):
+        localFiles = []
         for folder in folders.values():
             if self.config["no_subfolder"]:
                 path = os.path.join(self.downloadDir, folder[1:])
@@ -103,16 +102,6 @@ class CanvasSyncer:
                 )
             if not os.path.exists(path):
                 os.makedirs(path)
-
-    def getLocalFiles(self, courseID, folders):
-        localFiles = []
-        for folder in folders.values():
-            if self.config["no_subfolder"]:
-                path = os.path.join(self.downloadDir, folder[1:])
-            else:
-                path = os.path.join(
-                    self.downloadDir, f"{self.courseCode[courseID]}{folder}"
-                )
             localFiles += [
                 os.path.join(folder, f).replace("\\", "/").replace("//", "/")
                 for f in os.listdir(path)
@@ -124,8 +113,6 @@ class CanvasSyncer:
         res = {}
         url = f"{self.baseurl}/courses/{courseID}/folders?page={page}"
         folders = await self.sessGetJson(url)
-        if not folders:
-            return res
         for folder in folders:
             if folder["full_name"].startswith("course files"):
                 folder["full_name"] = folder["full_name"][len("course files") :]
@@ -286,8 +273,7 @@ class CanvasSyncer:
 
     async def getCourseTaskInfo(self, courseID):
         folders, files = await self.getCourseFiles(courseID)
-        self.createFolders(courseID, folders)
-        localFiles = self.getLocalFiles(courseID, folders)
+        localFiles = self.prepareLocalFiles(courseID, folders)
         await asyncio.gather(
             *[
                 self.getCourseTaskInfoHelper(
@@ -352,8 +338,7 @@ class CanvasSyncer:
             ]
         )
         if not self.newFiles and not self.laterFiles:
-            print("All local files are synced!")
-            return
+            return print("All local files are synced!")
         self.checkNewFiles()
         self.checkLaterFiles()
         await self.downloader.start(
@@ -474,22 +459,15 @@ async def sync():
         Syncer = CanvasSyncer(config)
         await Syncer.sync()
         await Syncer.close()
-    except ConnectionError as e:
-        print("\nConnection Error. Please check your network and your token!")
-        if args.debug:
-            print(traceback.format_exc())
-        exit(1)
     except aiohttp.ServerDisconnectedError as e:
-        print("ServerDisconnectedError, try to reduce connection count using -c")
-        if args.debug:
-            print(traceback.format_exc())
+        print("Server disconnected error, try to reduce connection count using -c")
         exit(1)
     except KeyboardInterrupt as e:
         raise (e)
     except Exception as e:
-        print(
-            f"\nUnexpected Error: {e.__class__.__name__}. Please check your network and your token!"
-        )
+        errorName = e.__class__.__name__
+        print(f"Unexpected error: {errorName}. Please check your network and token!")
+    finally:
         if args.debug:
             print(traceback.format_exc())
 
