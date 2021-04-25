@@ -29,7 +29,7 @@ class AsyncDownloader:
         async with self.sem:
             async with self.sess.get(src, proxy=self.config.get("proxies")) as res:
                 if res.status != 200:
-                    print(f"{src} Download failed: {res.status}")
+                    print(f"\n{src} Download failed: {res.status}")
                     return
                 async with aiofiles.open(dst, "+wb") as f:
                     while True:
