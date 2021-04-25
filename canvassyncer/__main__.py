@@ -29,8 +29,7 @@ class AsyncDownloader:
         async with self.sem:
             async with self.sess.get(src, proxy=self.config.get("proxies")) as res:
                 if res.status != 200:
-                    print(f"{src} Download failed: {res.status}")
-                    return
+                    return self.failures.append(f"{src} => {dst}")
                 async with aiofiles.open(dst, "+wb") as f:
                     while True:
                         chunk = await res.content.read(1024 * 4)
@@ -41,9 +40,15 @@ class AsyncDownloader:
 
     async def start(self, infos, totalSize=0):
         self.tqdm = tqdm(total=totalSize, unit="B", unit_scale=True)
+        self.failures = []
         await asyncio.gather(
             *[asyncio.create_task(self.downloadOne(src, dst)) for src, dst in infos]
         )
+        self.tqdm.close()
+        if self.failures:
+            print(f"Fail to download these {len(self.failures)} file(s):")
+            for text in self.failures:
+                print(text)
 
 
 class CanvasSyncer:
@@ -471,6 +476,11 @@ async def sync():
         await Syncer.close()
     except ConnectionError as e:
         print("\nConnection Error. Please check your network and your token!")
+        if args.debug:
+            print(traceback.format_exc())
+        exit(1)
+    except aiohttp.ServerDisconnectedError as e:
+        print("ServerDisconnectedError, try to reduce connection count using -c")
         if args.debug:
             print(traceback.format_exc())
         exit(1)
