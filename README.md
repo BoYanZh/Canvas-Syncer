@@ -1,8 +1,9 @@
 # Canvas-Syncer
 
-[![MIT License](https://img.shields.io/apm/l/atomic-design-ui.svg?)](https://github.com/tterb/atomic-design-ui/blob/master/LICENSEs)
+[![MIT License](https://img.shields.io/pypi/l/canvassyncer)](https://github.com/BoYanZh/Canvas-Syncer/blob/master/LICENSE)
 [![CodeFactor](https://www.codefactor.io/repository/github/boyanzh/canvas-syncer/badge)](https://www.codefactor.io/repository/github/boyanzh/canvas-syncer)
 [![PyPi Version](https://img.shields.io/pypi/v/canvassyncer.svg)](https://pypi.org/pypi/canvassyncer)
+[![PyPi Downloads](http://pepy.tech/badge/canvassyncer)](https://pypi.org/pypi/canvassyncer)
 
 A async python script that sync files and folders across Canvas Files and local, with extremely fast speed.
 
