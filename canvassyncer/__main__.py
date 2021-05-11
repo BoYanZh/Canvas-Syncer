@@ -12,7 +12,7 @@ import aiofiles
 import aiohttp
 from tqdm import tqdm
 
-__version__ = "2.0.3"
+__version__ = "2.0.4"
 CONFIG_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), ".canvassyncer.json"
 )
@@ -458,7 +458,6 @@ async def sync():
         config["connection_count"] = args.connection
         Syncer = CanvasSyncer(config)
         await Syncer.sync()
-        await Syncer.close()
     except aiohttp.ServerDisconnectedError as e:
         print("Server disconnected error, try to reduce connection count using -c")
         exit(1)
@@ -466,10 +465,11 @@ async def sync():
         raise (e)
     except Exception as e:
         errorName = e.__class__.__name__
-        print(f"Unexpected error: {errorName}. Please check your network and token!")
+        print(f"Unexpected error: {errorName}. Please check your network and token! Or use -d for detailed information.")
     finally:
         if args.debug:
             print(traceback.format_exc())
+        await Syncer.close()
 
 
 def run():
