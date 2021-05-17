@@ -24,7 +24,7 @@ Then input the information following the guide.
 
 *Note:*
 1. `courseCode` should be something like `VG100`, `VG101`
-2. `courseID` should be a integer. Check the canvas link of the course. e.g. `courseID = 7` for <https://umjicanvas.com/courses/7>.
+2. `courseID` should be an integer. Check the canvas link of the course. e.g. `courseID = 7` for <https://umjicanvas.com/courses/7>.
 
 
 If you have not installed `pip` yet, you may refer to <https://pip.pypa.io/en/stable/installing/> or the search engine to get your `pip`.
@@ -51,7 +51,7 @@ Optional arguments:
 
 Open Your Canvas-Account-Approved Integrations-New Access Token
 
-You may also refer to <https://github.com/tc-imba/canvas-auto-rubric#generate-key-access-token-on-canvas>
+You may also refer to <https://github.com/tc-imba/canvas-auto-rubric#generate-key-access-token-on-canvas>.
 
 ## Contribution
 
