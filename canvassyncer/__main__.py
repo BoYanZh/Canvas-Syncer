@@ -176,11 +176,6 @@ class CanvasSyncer:
             page += PAGES_PER_TIME
         return folders, files
 
-    async def getCourseCode(self, courseID):
-        url = f"{self.baseurl}/courses/{courseID}"
-        sessRes = await self.sessGetJson(url)
-        return sessRes["course_code"]
-
     async def getCourseIdByCourseCodeHelper(self, page, lowerCourseCodes):
         res = {}
         url = f"{self.baseurl}/courses?page={page}"
@@ -215,7 +210,11 @@ class CanvasSyncer:
             page += PAGES_PER_TIME
 
     async def getCourseCodeByCourseIDHelper(self, courseID):
-        self.courseCode[courseID] = await self.getCourseCode(courseID)
+        url = f"{self.baseurl}/courses/{courseID}"
+        sessRes = await self.sessGetJson(url)
+        if sessRes.get("course_code") is None:
+            return
+        self.courseCode[courseID] = sessRes["course_code"]
 
     async def getCourseCodeByCourseID(self):
         await asyncio.gather(
@@ -466,9 +465,9 @@ async def sync():
     except Exception as e:
         errorName = e.__class__.__name__
         print(f"Unexpected error: {errorName}. Please check your network and token! Or use -d for detailed information.")
-    finally:
         if args.debug:
             print(traceback.format_exc())
+    finally:
         await Syncer.close()
 
 
