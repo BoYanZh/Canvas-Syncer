@@ -51,7 +51,7 @@ Optional arguments:
 
 Open Your Canvas-Account-Approved Integrations-New Access Token
 
-You may also refer to <https://github.com/tc-imba/canvas-auto-rubric#generate-key-access-token-on-canvas>.
+You may also refer to <https://tc-imba.github.io/canvas-auto-rubric/workflow/#generate-access-token>.
 
 ## Contribution
 
