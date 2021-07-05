@@ -51,7 +51,7 @@ Optional arguments:
 
 Open Your Canvas-Account-Approved Integrations-New Access Token
 
-You may also refer to <https://tc-imba.github.io/canvas-auto-rubric/workflow/#generate-access-token>.
+Or it can be easily achieved with <https://github.com/BoYanZh/JI-Auth>.
 
 ## Contribution
 
