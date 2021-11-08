@@ -352,9 +352,10 @@ def initConfig():
     elif os.path.exists("./canvassyncer.json"):
         oldConfig = json.load(open("./canvassyncer.json"))
     print("Generating new config file...")
-    url = input("Canvas url(Default: https://umjicanvas.com):").strip()
+    prevu = oldConfig.get('canvasURL', '') if oldConfig else "https://umjicanvas.com"
+    url = input("Canvas url(Defuault: " + prevu + "):").strip()
     if not url:
-        url = "https://umjicanvas.com"
+        url = prevu
     tipStr = f"(Default: {oldConfig.get('token', '')})" if oldConfig else ""
     token = input(f"Canvas access token{tipStr}:").strip()
     if not token:
