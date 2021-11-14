@@ -19,14 +19,6 @@ pip3 install canvassyncer
 canvassyncer
 ```
 
-### Install From Source
-
-```bash
-git clone https://github.com/BoYanZh/Canvas-Syncer
-cd Canvas-Syncer
-pip install -e .
-```
-
 Then input the information following the guide.
 
 *Note:*
@@ -59,6 +51,14 @@ Optional arguments:
 Open Your Canvas-Account-Approved Integrations-New Access Token
 
 Or it can be easily achieved with <https://github.com/BoYanZh/JI-Auth>.
+
+### Install From Source
+
+```bash
+git clone https://github.com/BoYanZh/Canvas-Syncer
+cd Canvas-Syncer
+pip install -e .
+```
 
 ## Contribution
 
