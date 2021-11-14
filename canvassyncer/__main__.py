@@ -6,6 +6,7 @@ import os
 import re
 import time
 import traceback
+import requests
 from datetime import datetime, timezone
 
 import aiofiles
@@ -18,18 +19,26 @@ CONFIG_PATH = os.path.join(
 )
 PAGES_PER_TIME = 8
 
+def download(url, filename=None):
+    down_res = requests.get(url)
+    dir_path = filename[0: filename.rfind('/')]
+    if not os.path.exists(dir_path):
+        os.makedirs(dir_path)
+    with open(filename, 'wb') as file:
+        file.write(down_res.content)
 
 class AsyncDownloader:
     def __init__(self, sess, sem, config):
         self.sess: aiohttp.ClientSession = sess
         self.sem = sem
         self.config = config
+        self.fails = {}
 
     async def downloadOne(self, src, dst):
         async with self.sem:
             async with self.sess.get(src, proxy=self.config.get("proxies")) as res:
                 if res.status != 200:
-                    return self.failures.append(f"{src} => {dst}")
+                    self.fails[src] = dst
                 async with aiofiles.open(dst, "+wb") as f:
                     while True:
                         chunk = await res.content.read(1024 * 4)
@@ -45,6 +54,10 @@ class AsyncDownloader:
             *[asyncio.create_task(self.downloadOne(src, dst)) for src, dst in infos]
         )
         self.tqdm.close()
+        for k, v in self.fails.items():
+            download(k, v)
+            if not os.path.exists(v):
+                self.failures.append(f"{k} => {v}")
         if self.failures:
             print(f"Fail to download these {len(self.failures)} file(s):")
             for text in self.failures:
