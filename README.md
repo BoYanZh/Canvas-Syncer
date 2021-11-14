@@ -19,6 +19,14 @@ pip3 install canvassyncer
 canvassyncer
 ```
 
+### Install From Source
+
+```bash
+git clone https://github.com/BoYanZh/Canvas-Syncer
+cd Canvas-Syncer
+pip install -e .
+```
+
 Then input the information following the guide.
 
 *Note:*
