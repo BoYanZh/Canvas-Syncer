@@ -9,7 +9,7 @@ import traceback
 from datetime import datetime, timezone
 
 import aiofiles
-import aiohttp
+import httpx
 from tqdm import tqdm
 
 __version__ = "2.0.5"
@@ -20,23 +20,24 @@ PAGES_PER_TIME = 8
 
 
 class AsyncDownloader:
-    def __init__(self, sess, sem, config):
-        self.sess: aiohttp.ClientSession = sess
+    def __init__(self, client, sem, config):
+        self.client: httpx.AsyncClient = client
         self.sem = sem
         self.config = config
 
     async def downloadOne(self, src, dst):
         async with self.sem:
-            async with self.sess.get(src, proxy=self.config.get("proxies")) as res:
-                if res.status != 200:
+            async with self.client.stream("GET", src) as res:
+                if res.status_code != 200:
                     return self.failures.append(f"{src} => {dst}")
+                num_bytes_downloaded = res.num_bytes_downloaded
                 async with aiofiles.open(dst, "+wb") as f:
-                    while True:
-                        chunk = await res.content.read(1024 * 4)
-                        if not chunk:
-                            break
+                    async for chunk in res.aiter_bytes():
                         await f.write(chunk)
-                        self.tqdm.update(len(chunk))
+                        self.tqdm.update(
+                            res.num_bytes_downloaded - num_bytes_downloaded
+                        )
+                        num_bytes_downloaded = res.num_bytes_downloaded
 
     async def start(self, infos, totalSize=0):
         self.tqdm = tqdm(total=totalSize, unit="B", unit_scale=True)
@@ -55,7 +56,11 @@ class CanvasSyncer:
     def __init__(self, config):
         self.confirmAll = config["y"]
         self.config = config
-        self.sess = aiohttp.ClientSession()
+        self.client = httpx.AsyncClient(
+            timeout=10,
+            headers={"Authorization": f"Bearer {self.config['token']}"},
+            proxies=self.config.get("proxies"),
+        )
         self.sem = asyncio.Semaphore(config["connection_count"])
         self.downloadSize = 0
         self.laterDownloadSize = 0
@@ -67,29 +72,22 @@ class CanvasSyncer:
         self.laterFiles = []
         self.laterInfo = []
         self.skipfiles = []
-        self.downloader = AsyncDownloader(self.sess, self.sem, self.config)
+        self.downloader = AsyncDownloader(self.client, self.sem, self.config)
         if not os.path.exists(self.downloadDir):
             os.mkdir(self.downloadDir)
 
     async def close(self):
-        await self.sess.close()
+        await self.client.aclose()
 
-    def setSessionArgs(self, **kwargs):
-        kwargs["timeout"] = kwargs.get("timeout", 10)
-        kwargs["headers"] = kwargs.get("headers", {})
-        kwargs["headers"]["Authorization"] = f"Bearer {self.config['token']}"
-        kwargs["proxy"] = self.config.get("proxies")
-        return kwargs
-
-    async def sessGetJson(self, *args, **kwargs):
+    async def clientGetJson(self, *args, **kwargs):
         async with self.sem:
-            async with self.sess.get(*args, **self.setSessionArgs(**kwargs)) as resp:
-                return await resp.json()
+            resp = await self.client.get(*args, **kwargs)
+            return resp.json()
 
-    async def sessHead(self, *args, **kwargs):
+    async def clientHead(self, *args, **kwargs):
         async with self.sem:
-            async with self.sess.head(*args, **self.setSessionArgs(**kwargs)) as resp:
-                return resp.headers
+            resp = await self.client.head(*args, **kwargs)
+            return resp.headers
 
     def prepareLocalFiles(self, courseID, folders):
         localFiles = []
@@ -112,7 +110,7 @@ class CanvasSyncer:
     async def getCourseFoldersWithIDHelper(self, courseID, page):
         res = {}
         url = f"{self.baseurl}/courses/{courseID}/folders?page={page}"
-        folders = await self.sessGetJson(url)
+        folders = await self.clientGetJson(url)
         for folder in folders:
             if folder["full_name"].startswith("course files"):
                 folder["full_name"] = folder["full_name"][len("course files") :]
@@ -143,7 +141,7 @@ class CanvasSyncer:
     async def getCourseFilesHelper(self, courseID, page, folders):
         files = {}
         url = f"{self.baseurl}/courses/{courseID}/files?page={page}"
-        canvasFiles = await self.sessGetJson(url)
+        canvasFiles = await self.clientGetJson(url)
         if not canvasFiles or isinstance(canvasFiles, dict):
             return files
         for f in canvasFiles:
@@ -179,7 +177,7 @@ class CanvasSyncer:
     async def getCourseIdByCourseCodeHelper(self, page, lowerCourseCodes):
         res = {}
         url = f"{self.baseurl}/courses?page={page}"
-        courses = await self.sessGetJson(url)
+        courses = await self.clientGetJson(url)
         if isinstance(courses, dict) and courses.get("errors"):
             errMsg = courses["errors"][0].get("message", "unknown error.")
             print(f"\nError: {errMsg}")
@@ -211,10 +209,10 @@ class CanvasSyncer:
 
     async def getCourseCodeByCourseIDHelper(self, courseID):
         url = f"{self.baseurl}/courses/{courseID}"
-        sessRes = await self.sessGetJson(url)
-        if sessRes.get("course_code") is None:
+        clientRes = await self.clientGetJson(url)
+        if clientRes.get("course_code") is None:
             return
-        self.courseCode[courseID] = sessRes["course_code"]
+        self.courseCode[courseID] = clientRes["course_code"]
 
     async def getCourseCodeByCourseID(self):
         await asyncio.gather(
@@ -246,7 +244,7 @@ class CanvasSyncer:
         path = path.replace("\\", "/").replace("//", "/")
         if fileName in localFiles and fileModifiedTimeStamp <= os.path.getctime(path):
             return
-        response = await self.sessHead(fileUrl)
+        response = await self.clientHead(fileUrl)
         fileSize = int(response.get("content-length", 0))
         if fileName in localFiles:
             self.laterDownloadSize += fileSize
@@ -256,9 +254,6 @@ class CanvasSyncer:
             )
             return
         if fileSize > self.config["filesizeThresh"] * 1000000:
-            print(
-                f"{self.courseCode[courseID]}{fileName} ({round(fileSize / 1000000, 2)}MB) ignored, too large."
-            )
             aiofiles.open(path, "w").close()
             self.skipfiles.append(
                 f"{self.courseCode[courseID]}{fileName} ({round(fileSize / 1000000, 2)}MB)"
@@ -352,7 +347,7 @@ def initConfig():
     elif os.path.exists("./canvassyncer.json"):
         oldConfig = json.load(open("./canvassyncer.json"))
     print("Generating new config file...")
-    prevu = oldConfig.get('canvasURL', '') if oldConfig else "https://umjicanvas.com"
+    prevu = oldConfig.get("canvasURL", "") if oldConfig else "https://umjicanvas.com"
     url = input("Canvas url(Defuault: " + prevu + "):").strip()
     if not url:
         url = prevu
@@ -458,18 +453,23 @@ async def sync():
         config["connection_count"] = args.connection
         Syncer = CanvasSyncer(config)
         await Syncer.sync()
-    except aiohttp.ServerDisconnectedError as e:
-        print("Server disconnected error, try to reduce connection count using -c")
+    except httpx.ConnectError as e:
+        print("Server connect error, try to reduce connection count using -c")
         exit(1)
     except KeyboardInterrupt as e:
         raise (e)
     except Exception as e:
         errorName = e.__class__.__name__
-        print(f"Unexpected error: {errorName}. Please check your network and token! Or use -d for detailed information.")
+        print(
+            f"Unexpected error: {errorName}. Please check your network and token!",
+            end="",
+        )
+        print("" if args.debug else " Or use -d for detailed information.")
         if args.debug:
             print(traceback.format_exc())
     finally:
-        await Syncer.close()
+        if Syncer:
+            await Syncer.close()
 
 
 def run():
