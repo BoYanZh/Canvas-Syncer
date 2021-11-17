@@ -73,6 +73,7 @@ class CanvasSyncer:
         self.laterInfo = []
         self.skipfiles = []
         self.downloader = AsyncDownloader(self.client, self.sem, self.config)
+        self.totalFileCount = 0
         if not os.path.exists(self.downloadDir):
             os.mkdir(self.downloadDir)
 
@@ -267,6 +268,7 @@ class CanvasSyncer:
 
     async def getCourseTaskInfo(self, courseID):
         folders, files = await self.getCourseFiles(courseID)
+        self.totalFileCount += len(files)
         localFiles = self.prepareLocalFiles(courseID, folders)
         await asyncio.gather(
             *[
@@ -331,6 +333,7 @@ class CanvasSyncer:
                 for courseID in self.courseCode.keys()
             ]
         )
+        print(f"Get {self.totalFileCount} files!")
         if not self.newFiles and not self.laterFiles:
             return print("All local files are synced!")
         self.checkNewFiles()
