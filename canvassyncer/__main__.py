@@ -56,10 +56,12 @@ class CanvasSyncer:
     def __init__(self, config):
         self.confirmAll = config["y"]
         self.config = config
+        transport = httpx.AsyncHTTPTransport(retries=3)
         self.client = httpx.AsyncClient(
-            timeout=10,
+            timeout=5,
             headers={"Authorization": f"Bearer {self.config['token']}"},
             proxies=self.config.get("proxies"),
+            transport=transport,
         )
         self.sem = asyncio.Semaphore(config["connection_count"])
         self.downloadSize = 0
