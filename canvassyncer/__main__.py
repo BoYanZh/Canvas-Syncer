@@ -187,6 +187,7 @@ class CanvasSyncer:
         if not courses:
             return res
         for course in courses:
+            #print(course)
             if course.get("course_code", "").lower() in lowerCourseCodes:
                 res[course["id"]] = course["course_code"]
                 lowerCourseCodes.remove(course.get("course_code", "").lower())
@@ -208,10 +209,41 @@ class CanvasSyncer:
                     endOfPage = True
                 self.courseCode.update(item)
             page += PAGES_PER_TIME
-
+            with open(".canvassyncer.json","r+") as f:
+                correct_courseCode = []
+                for i in self.courseCode:
+                    correct_courseCode.append(self.courseCode[i])
+                data = json.load(f)
+                newcourseCodes = []
+                for i in data["courseCodes"]:
+                    if i not in correct_courseCode:
+                        print("There is problem with course code",i)
+                        print("Deleted from config")
+                    else:
+                        newcourseCodes.append(i)
+                data["courseCodes"] = newcourseCodes
+                #print("data:\n",data["courseIDs"])
+                f.seek(0)
+                json.dump(data,f)
+                f.truncate()
     async def getCourseCodeByCourseIDHelper(self, courseID):
         url = f"{self.baseurl}/courses/{courseID}"
         sessRes = await self.sessGetJson(url)
+        #print("this is sessRes:\n ",sessRes)
+        if "id" not in sessRes.keys():
+            print("There is problem with courseID",courseID)
+            print("Deleted from config!")
+            with open(".canvassyncer.json","r+") as f:
+                data = json.load(f)
+                newcourseIDs = []
+                for i in data["courseIDs"]:
+                    if i != courseID:
+                        newcourseIDs.append(i)
+                data["courseIDs"] = newcourseIDs
+                #print("data:\n",data["courseIDs"])
+                f.seek(0)
+                json.dump(data,f)
+                f.truncate()
         if sessRes.get("course_code") is None:
             return
         self.courseCode[courseID] = sessRes["course_code"]
@@ -343,6 +375,7 @@ class CanvasSyncer:
         await self.downloader.start(
             self.newFiles + self.laterFiles, self.downloadSize + self.laterDownloadSize
         )
+
 
 
 def initConfig():
