@@ -50,5 +50,5 @@ setup(
         "Bug Reports": "https://github.com/BoYanZh/Canvas-Syncer/issues",
         "Source": "https://github.com/BoYanZh/Canvas-Syncer",
     },
-    install_requires=["aiohttp", "aiofiles", "tqdm"],
+    install_requires=["httpx", "aiofiles", "tqdm"],
 )
