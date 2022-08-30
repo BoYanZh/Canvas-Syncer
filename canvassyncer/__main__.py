@@ -359,7 +359,7 @@ def initConfig():
     elif os.path.exists("./canvassyncer.json"):
         oldConfig = json.load(open("./canvassyncer.json"))
     print("Generating new config file...")
-    prevu = oldConfig.get("canvasURL", "") if oldConfig else "https://umjicanvas.com"
+    prevu = oldConfig.get("canvasURL", "") if oldConfig else "https://jicanvas.com"
     url = input("Canvas url(Defuault: " + prevu + "):").strip()
     if not url:
         url = prevu
