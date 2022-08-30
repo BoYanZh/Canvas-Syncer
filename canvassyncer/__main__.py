@@ -84,7 +84,14 @@ class CanvasSyncer:
 
     async def clientGetJson(self, *args, **kwargs):
         async with self.sem:
-            resp = await self.client.get(*args, **kwargs)
+            check=0
+            while (check<=5):
+                resp = await self.client.get(*args, **kwargs)
+                try: 
+                    temp = resp.json()
+                    check = 10
+                except Exception as ee :
+                    check=check+1
             return resp.json()
 
     async def clientHead(self, *args, **kwargs):
