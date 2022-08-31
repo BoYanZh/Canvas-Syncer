@@ -45,7 +45,11 @@ setup(
     maintainer_email="bomingzh@sjtu.edu.cn",
     packages=find_packages(),
     python_requires=">=3.6",
-    entry_points={"console_scripts": ["canvassyncer=canvassyncer:main",],},
+    entry_points={
+        "console_scripts": [
+            "canvassyncer=canvassyncer:main",
+        ],
+    },
     project_urls={
         "Bug Reports": "https://github.com/BoYanZh/Canvas-Syncer/issues",
         "Source": "https://github.com/BoYanZh/Canvas-Syncer",
