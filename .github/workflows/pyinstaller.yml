@@ -13,7 +13,8 @@ jobs:
     - name: Package Application
       uses: JackMcKew/pyinstaller-action-windows@main
       with:
-        path: canvassyncer
+        path: .
+        spec: canvassyncer/build.spec
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v2
