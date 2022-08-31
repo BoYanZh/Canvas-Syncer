@@ -6,6 +6,7 @@ import os
 import re
 import time
 import traceback
+import platform
 from datetime import datetime, timezone
 
 import aiofiles
@@ -81,7 +82,9 @@ class AsyncSemClient:
 class CanvasSyncer:
     def __init__(self, config):
         self.config = config
-        self.client = AsyncSemClient(config["connection_count"], config["token"], config.get("proxies"))
+        self.client = AsyncSemClient(
+            config["connection_count"], config["token"], config.get("proxies")
+        )
         self.downloadSize = 0
         self.laterDownloadSize = 0
         self.courseCode = {}
@@ -440,17 +443,26 @@ def getConfig():
     config["debug"] = args.debug
     return config
 
+
 async def sync():
     syncer = None
     try:
         config = getConfig()
-        syncer = CanvasSyncer(config)
-        await syncer.sync()
-    except httpx.ConnectError as e:
-        print("Server connect error, try to reduce connection count using -c")
-        exit(1)
+        while True:
+            try:
+                syncer = CanvasSyncer(config)
+                await syncer.sync()
+                break
+            except httpx.ConnectError as e:
+                if config["connection_count"] == 2:
+                    raise e
+                config["connection_count"] //= 2
+                print(
+                    "Server connect error, reducing connection count "
+                    f"to {config['connection_count']} and retrying..."
+                )
     except KeyboardInterrupt as e:
-        raise (e)
+        raise e
     except Exception as e:
         errorName = e.__class__.__name__
         print(
@@ -467,6 +479,8 @@ async def sync():
 
 def run():
     try:
+        if platform.system() == "Windows":
+            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
         asyncio.run(sync())
     except KeyboardInterrupt:
         print("\nOperation cancelled by user, exiting...")
