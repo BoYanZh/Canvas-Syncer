@@ -87,10 +87,10 @@ class CanvasSyncer:
             check=0
             while (check<=5):
                 resp = await self.client.get(*args, **kwargs)
-                try: 
-                    temp = resp.json()
+                try:
+                    _=resp.json()
                     check = 10
-                except Exception as ee :
+                except Exception :
                     check=check+1
             return resp.json()
 
