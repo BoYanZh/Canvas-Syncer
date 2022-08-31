@@ -19,7 +19,14 @@ jobs:
       with:
         path: canvassyncer
 
-    - uses: actions/upload-artifact@v2
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v2
       with:
-        name: CanvasSyncer
+        name: canvassyncer-win.zip
         path: canvassyncer/dist/windows
+
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
+      with:
+        files: canvassyncer-win.zip
