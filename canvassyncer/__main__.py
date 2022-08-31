@@ -57,14 +57,11 @@ class AsyncSemClient:
                 print(text)
 
     async def json(self, *args, **kwargs):
+        checkError = bool(kwargs.pop("checkError", False))
         async with self.sem:
             resp = await self.client.get(*args, **kwargs)
         res = resp.json()
-        if (
-            kwargs.get("checkError") == True
-            and isinstance(res, dict)
-            and res.get("errors")
-        ):
+        if checkError and isinstance(res, dict) and res.get("errors"):
             errMsg = res["errors"][0].get("message", "unknown error.")
             print(f"\nError: {errMsg}")
             exit(1)
