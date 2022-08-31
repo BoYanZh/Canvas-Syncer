@@ -6,27 +6,40 @@
 
 An async python script that synchronizes files and folders across Canvas Files and local, with extremely fast speed.
 
-## Usage
+## Installation
+
+You may use one of the following
 
 ### Through Binary
 
-For Windows users, you can find binary(.exe) file here: <https://github.com/BoYanZh/Canvas-Syncer/releases>. Double click to run.
+For Windows users, you can find binary(.exe) file here: <https://github.com/BoYanZh/Canvas-Syncer/releases>. Unzip it and double click `canvassyncer.exe` file to run, or calling it in shell.
 
 ### Through `pip`
 
 ```bash
-pip3 install canvassyncer
+pip3 install -U canvassyncer
+```
+
+If you have not installed `pip` yet, you may refer to <https://pip.pypa.io/en/stable/installing/> or the search engine to get your `pip`.
+
+### From Source
+
+```bash
+git clone https://github.com/BoYanZh/Canvas-Syncer && cd Canvas-Syncer
+pip install -e .
+```
+
+## Usage
+
+```bash
 canvassyncer
 ```
 
 Then input the information following the guide.
 
 *Note:*
-1. `courseCode` should be something like `VG100`, `VG101`
+1. `courseCode` should be something like `VG100`, `ECE4530J`
 2. `courseID` should be an integer. Check the canvas link of the course. e.g. `courseID = 7` for <https://umjicanvas.com/courses/7>.
-
-
-If you have not installed `pip` yet, you may refer to <https://pip.pypa.io/en/stable/installing/> or the search engine to get your `pip`.
 
 You can use `canvassyncer -h` to get help.
 
@@ -52,15 +65,8 @@ Optional arguments:
 
 Open Your Canvas-Account-Approved Integrations-New Access Token
 
-Or it can be easily achieved with <https://github.com/BoYanZh/JI-Auth>.
+Or it can be easily achieved with <https://github.com/BoYanZh/JI-Auth> if you are a UM-SJTU-JI student.
 
-### Install From Source
-
-```bash
-git clone https://github.com/BoYanZh/Canvas-Syncer
-cd Canvas-Syncer
-pip install -e .
-```
 
 ## Contribution
 
