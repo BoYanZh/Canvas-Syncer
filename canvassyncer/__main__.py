@@ -12,7 +12,7 @@ import aiofiles
 import httpx
 from tqdm import tqdm
 
-__version__ = "2.0.5"
+__version__ = "2.0.6"
 CONFIG_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), ".canvassyncer.json"
 )
@@ -319,7 +319,9 @@ class CanvasSyncer:
                     ntpath.dirname(path),
                     f"{localCreatedTimeStamp}_{ntpath.basename(path)}",
                 )
-                if not os.path.exists(newPath):
+                if self.config["no_keep_older_version"]:
+                    os.remove(path)
+                elif not os.path.exists(newPath):
                     os.rename(path, newPath)
                 else:
                     path = os.path.join(
@@ -444,6 +446,11 @@ async def sync():
         parser.add_argument(
             "-d", "--debug", help="show debug information", action="store_true"
         )
+        parser.add_argument(
+            "--no-keep-older-version",
+            help="do not keep older version",
+            action="store_true",
+        )
         args = parser.parse_args()
         configPath = args.path
         if args.r or not os.path.exists(configPath):
@@ -463,6 +470,7 @@ async def sync():
         config["proxies"] = args.proxy
         config["no_subfolder"] = args.no_subfolder
         config["connection_count"] = args.connection
+        config["no_keep_older_version"] = args.no_keep_older_version
         Syncer = CanvasSyncer(config)
         await Syncer.sync()
     except httpx.ConnectError as e:
