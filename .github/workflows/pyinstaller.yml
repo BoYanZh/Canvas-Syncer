@@ -18,7 +18,7 @@ jobs:
     - name: Upload Artifact
       uses: actions/upload-artifact@v2
       with:
-        name: canvassyncer-win.zip
+        name: canvassyncer-win
         path: canvassyncer/dist/windows
 
     - name: Release
