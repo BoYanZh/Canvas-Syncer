@@ -44,6 +44,8 @@ Optional arguments:
                         download proxy
   -V, --version         show program's version number and exit
   -d, --debug           show debug information
+  --no-keep-older-version
+                        do not keep older version
 ```
 
 ### How to get your token?
