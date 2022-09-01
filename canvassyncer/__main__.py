@@ -57,9 +57,9 @@ class AsyncSemClient:
                 print(text)
 
     async def json(self, *args, **kwargs):
-        retryTimes=0
+        retryTimes = 0
         checkError = bool(kwargs.pop("checkError", False))
-        while (retryTimes<=5):
+        while (retryTimes <= 5):
             try:
                 async with self.sem:
                     resp = await self.client.get(*args, **kwargs)
@@ -70,7 +70,7 @@ class AsyncSemClient:
                     exit(1)
                 return res
             except Exception:
-                retryTimes+=1
+                retryTimes += 1
         return res
 
     async def head(self, *args, **kwargs):
