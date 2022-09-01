@@ -353,7 +353,7 @@ def initConfig():
 
     print("Generating new config file...")
     url = promptConfigStr(
-        "Canvas url", "canvasURL", defaultValOnMissing="https://umjicanvas.com"
+        "Canvas url", "canvasURL", defaultValOnMissing="https://jicanvas.com"
     )
     token = promptConfigStr("Canvas access token", "token")
     courseCodesStr = promptConfigStr(
