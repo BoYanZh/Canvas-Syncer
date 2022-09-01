@@ -39,7 +39,7 @@ Then input the information following the guide.
 
 *Note:*
 1. `courseCode` should be something like `VG100`, `ECE4530J`
-2. `courseID` should be an integer. Check the canvas link of the course. e.g. `courseID = 7` for <https://umjicanvas.com/courses/7>.
+2. `courseID` should be an integer. Check the canvas link of the course. e.g. `courseID = 7` for <https://jicanvas.com/courses/7>.
 
 You can use `canvassyncer -h` to get help.
 
