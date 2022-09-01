@@ -57,14 +57,20 @@ class AsyncSemClient:
                 print(text)
 
     async def json(self, *args, **kwargs):
+        retryTimes=0
         checkError = bool(kwargs.pop("checkError", False))
-        async with self.sem:
-            resp = await self.client.get(*args, **kwargs)
-        res = resp.json()
-        if checkError and isinstance(res, dict) and res.get("errors"):
-            errMsg = res["errors"][0].get("message", "unknown error.")
-            print(f"\nError: {errMsg}")
-            exit(1)
+        while (retryTimes<=5):
+            try:
+                async with self.sem:
+                    resp = await self.client.get(*args, **kwargs)
+                res = resp.json()
+                if checkError and isinstance(res, dict) and res.get("errors"):
+                    errMsg = res["errors"][0].get("message", "unknown error.")
+                    print(f"\nError: {errMsg}")
+                    exit(1)
+                return res
+            except Exception:
+                retryTimes+=1
         return res
 
     async def head(self, *args, **kwargs):
