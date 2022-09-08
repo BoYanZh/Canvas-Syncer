@@ -1,6 +1,5 @@
 import argparse
 import asyncio
-from distutils.log import debug
 import json
 import ntpath
 import os
