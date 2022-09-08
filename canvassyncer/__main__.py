@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+from distutils.log import debug
 import json
 import ntpath
 import os
@@ -59,6 +60,7 @@ class AsyncSemClient:
     async def json(self, *args, **kwargs):
         retryTimes = 0
         checkError = bool(kwargs.pop("checkError", False))
+        debugMode = bool(kwargs.pop("debug", False))
         while (retryTimes <= 5):
             try:
                 async with self.sem:
@@ -69,8 +71,10 @@ class AsyncSemClient:
                     print(f"\nError: {errMsg}")
                     exit(1)
                 return res
-            except Exception:
+            except Exception as e:
                 retryTimes += 1
+                if debugMode:
+                    print(f"{e.__class__.__name__}. Retry. {retryTimes} times.")
         return res
 
     async def head(self, *args, **kwargs):
@@ -141,7 +145,7 @@ class CanvasSyncer:
     async def getCourseFoldersWithIDHelper(self, page, courseID):
         res = {}
         url = f"{self.baseUrl}/courses/{courseID}/folders?page={page}"
-        folders = await self.client.json(url)
+        folders = await self.client.json(url,debug=self.config["debug"])
         for folder in folders:
             if folder["full_name"].startswith("course files"):
                 folder["full_name"] = folder["full_name"][len("course files") :]
@@ -154,7 +158,7 @@ class CanvasSyncer:
     async def getCourseFilesHelper(self, page, courseID, folders):
         files = {}
         url = f"{self.baseUrl}/courses/{courseID}/files?page={page}"
-        canvasFiles = await self.client.json(url)
+        canvasFiles = await self.client.json(url, debug=self.config["debug"])
         if not canvasFiles or isinstance(canvasFiles, dict):
             return files
         for f in canvasFiles:
@@ -176,7 +180,7 @@ class CanvasSyncer:
     async def getCourseIdByCourseCodeHelper(self, page, lowerCourseCodes):
         res = {}
         url = f"{self.baseUrl}/courses?page={page}"
-        courses = await self.client.json(url, checkError=True)
+        courses = await self.client.json(url, checkError=True, debug=self.config["debug"])
         if not courses:
             return res
         for course in courses:
@@ -193,7 +197,7 @@ class CanvasSyncer:
 
     async def getCourseCodeByCourseIDHelper(self, courseID):
         url = f"{self.baseUrl}/courses/{courseID}"
-        clientRes = await self.client.json(url)
+        clientRes = await self.client.json(url, debug=self.config["debug"])
         if clientRes.get("course_code") is None:
             return
         self.courseCode[courseID] = clientRes["course_code"]
