@@ -61,7 +61,7 @@ class AsyncSemClient:
         retryTimes = 0
         checkError = bool(kwargs.pop("checkError", False))
         debugMode = bool(kwargs.pop("debug", False))
-        while (retryTimes <= 5):
+        while retryTimes <= 5:
             try:
                 async with self.sem:
                     resp = await self.client.get(*args, **kwargs)
