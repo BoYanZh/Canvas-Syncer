@@ -144,7 +144,7 @@ class CanvasSyncer:
     async def getCourseFoldersWithIDHelper(self, page, courseID):
         res = {}
         url = f"{self.baseUrl}/courses/{courseID}/folders?page={page}"
-        folders = await self.client.json(url,debug=self.config["debug"])
+        folders = await self.client.json(url, debug=self.config["debug"])
         for folder in folders:
             if folder["full_name"].startswith("course files"):
                 folder["full_name"] = folder["full_name"][len("course files") :]
