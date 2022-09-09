@@ -103,7 +103,6 @@ class CanvasSyncer:
         self.skipfiles = []
         self.totalFileCount = 0
         self.droppedCourse = {"courseIDs":[], "courseCodes":[]}
-
         if not os.path.exists(self.downloadDir):
             os.mkdir(self.downloadDir)
 
@@ -341,7 +340,6 @@ class CanvasSyncer:
         await self.client.downloadMany(
             self.newFiles + self.laterFiles, self.downloadSize + self.laterDownloadSize
         )
-
 
 
 def initConfig():
