@@ -123,11 +123,11 @@ class CanvasSyncer:
                     endOfPage = True
                 res.update(item)
             page += PAGES_PER_TIME
-            correct_courseCode = []
+            correctCourseCode = []
             for i in self.courseCode:
-                correct_courseCode.append(self.courseCode[i])
+                correctCourseCode.append(self.courseCode[i])
             for i in self.config["courseCodes"]:
-                if i not in correct_courseCode:
+                if i not in correctCourseCode:
                     if i not in self.droppedCourse["courseCodes"]:
                         print("course with course code",i,"might be dropped!")
                         self.droppedCourse["courseCodes"].append(i)
