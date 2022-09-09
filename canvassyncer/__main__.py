@@ -102,7 +102,7 @@ class CanvasSyncer:
         self.laterInfo = []
         self.skipfiles = []
         self.totalFileCount = 0
-        self.droppedCourse={"courseIDs":[],"courseCodes":[]}
+        self.droppedCourse = {"courseIDs":[], "courseCodes":[]}
 
         if not os.path.exists(self.downloadDir):
             os.mkdir(self.downloadDir)
