@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 import aiofiles
 import httpx
 from tqdm import tqdm
+global droppedCourse
+droppedCourse={"courseIDs":[],"courseCodes":[]}
 
 __version__ = "2.0.10"
 CONFIG_PATH = os.path.join(
@@ -121,6 +123,14 @@ class CanvasSyncer:
                     endOfPage = True
                 res.update(item)
             page += PAGES_PER_TIME
+            correct_courseCode = []
+            for i in self.courseCode:
+                correct_courseCode.append(self.courseCode[i])
+            for i in self.config["courseCodes"]:
+                if i not in correct_courseCode:
+                    if i not in droppedCourse["courseCodes"]:
+                        print("course with course code",i,"might be dropped!")
+                        droppedCourse["courseCodes"].append(i)
         return res
 
     def prepareLocalFiles(self, courseID, folders):
@@ -197,6 +207,10 @@ class CanvasSyncer:
     async def getCourseCodeByCourseIDHelper(self, courseID):
         url = f"{self.baseUrl}/courses/{courseID}"
         clientRes = await self.client.json(url, debug=self.config["debug"])
+        if "id" not in clientRes.keys():
+            if courseID not in droppedCourse["courseIDs"]:
+                print("Course with course ID",courseID,"might be dropped!")
+                droppedCourse["courseIDs"].append(courseID)
         if clientRes.get("course_code") is None:
             return
         self.courseCode[courseID] = clientRes["course_code"]
@@ -329,6 +343,7 @@ class CanvasSyncer:
         await self.client.downloadMany(
             self.newFiles + self.laterFiles, self.downloadSize + self.laterDownloadSize
         )
+
 
 
 def initConfig():
