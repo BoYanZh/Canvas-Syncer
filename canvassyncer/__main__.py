@@ -352,6 +352,11 @@ def initConfig():
         res = input(f"{promptStr}{tipStr}: ").strip()
         if not res:
             res = defaultVal
+        elif res == "remove":
+            if defaultValOnMissing is not None:
+                res = defaultValOnMissing
+            else:
+                res = ""
         return res
 
     print("Generating new config file...")
