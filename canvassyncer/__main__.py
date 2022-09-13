@@ -74,7 +74,6 @@ class AsyncSemClient:
                 retryTimes += 1
                 if debugMode:
                     print(f"{e.__class__.__name__}. Retry. {retryTimes} times.")
-        return res
 
     async def head(self, *args, **kwargs):
         async with self.sem:
