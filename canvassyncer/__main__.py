@@ -353,7 +353,7 @@ def initConfig():
         else:
             defaultValOnRemove = ""
         tipStr = f"(Default: {defaultVal})" if defaultVal else ""
-        tipRemove = f"(If you input remove, value will change to {defaultValOnRemove})" if defaultValOnRemove != "" else f"(If you input remove, value will change to empty)"
+        tipRemove = f"(If you input remove, value will change to " + (f"{defaultValOnRemove})" if defaultValOnRemove != "" else "empty)")
         res = input(f"{promptStr}{tipStr}{tipRemove}: ").strip()
         if not res:
             res = defaultVal
