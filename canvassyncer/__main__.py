@@ -36,13 +36,20 @@ class AsyncSemClient:
                 if res.status_code != 200:
                     return self.failures.append(f"{src} => {dst}")
                 num_bytes_downloaded = res.num_bytes_downloaded
-                async with aiofiles.open(dst, "+wb") as f:
-                    async for chunk in res.aiter_bytes():
-                        await f.write(chunk)
-                        self.tqdm.update(
-                            res.num_bytes_downloaded - num_bytes_downloaded
-                        )
-                        num_bytes_downloaded = res.num_bytes_downloaded
+                dst_temp = dst+".temp"
+                try:
+                    async with aiofiles.open(dst_temp, "+wb") as f:
+                        async for chunk in res.aiter_bytes():
+                            await f.write(chunk)
+                            self.tqdm.update(
+                                res.num_bytes_downloaded - num_bytes_downloaded
+                            )
+                            num_bytes_downloaded = res.num_bytes_downloaded
+                except Exception as e:
+                    print(e.__class__.__name__)
+                    os.remove(dst_temp)
+                    return
+                os.rename(dst_temp,dst)
 
     async def downloadMany(self, infos, totalSize=0):
         self.tqdm = tqdm(total=totalSize, unit="B", unit_scale=True)
@@ -229,7 +236,7 @@ class CanvasSyncer:
                 self.downloadDir, f"{self.courseCode[courseID]}{fileName}"
             )
         path = path.replace("\\", "/").replace("//", "/")
-        if fileName in localFiles and fileModifiedTimeStamp <= os.path.getctime(path) and os.path.getsize(path) == fileName:
+        if fileName in localFiles and fileModifiedTimeStamp <= os.path.getctime(path):
             return
         response = await self.client.head(fileUrl)
         fileSize = int(response.get("content-length", 0))
