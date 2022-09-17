@@ -36,7 +36,7 @@ class AsyncSemClient:
                 if res.status_code != 200:
                     return self.failures.append(f"{src} => {dst}")
                 num_bytes_downloaded = res.num_bytes_downloaded
-                dst_temp = dst+".temp"
+                dst_temp = dst + ".temp"
                 try:
                     async with aiofiles.open(dst_temp, "+wb") as f:
                         async for chunk in res.aiter_bytes():
@@ -49,7 +49,7 @@ class AsyncSemClient:
                     print(e.__class__.__name__)
                     os.remove(dst_temp)
                     return
-                os.rename(dst_temp,dst)
+                os.rename(dst_temp, dst)
 
     async def downloadMany(self, infos, totalSize=0):
         self.tqdm = tqdm(total=totalSize, unit="B", unit_scale=True)
@@ -186,7 +186,9 @@ class CanvasSyncer:
     async def getCourseIdByCourseCodeHelper(self, page, lowerCourseCodes):
         res = {}
         url = f"{self.baseUrl}/courses?page={page}"
-        courses = await self.client.json(url, checkError=True, debug=self.config["debug"])
+        courses = await self.client.json(
+            url, checkError=True, debug=self.config["debug"]
+        )
         if not courses:
             return res
         for course in courses:
