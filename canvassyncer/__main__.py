@@ -347,10 +347,17 @@ def initConfig():
         elif isinstance(defaultVal, list):
             defaultVal = " ".join((str(val) for val in defaultVal))
         defaultVal = str(defaultVal)
+        if defaultValOnMissing is not None:
+            defaultValOnRemove = defaultValOnMissing
+        else:
+            defaultValOnRemove = ""
         tipStr = f"(Default: {defaultVal})" if defaultVal else ""
-        res = input(f"{promptStr}{tipStr}: ").strip()
+        tipRemove = "(If you input remove, value will become " + (f"{defaultValOnRemove})" if defaultValOnRemove != "" else "empty)")
+        res = input(f"{promptStr}{tipStr}{tipRemove}: ").strip()
         if not res:
             res = defaultVal
+        elif res == "remove":
+            res = defaultValOnRemove
         return res
 
     print("Generating new config file...")
