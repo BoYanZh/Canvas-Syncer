@@ -33,7 +33,7 @@ class AsyncSemClient:
     async def downloadOne(self, src, dst):
         async with self.sem:
             async with self.client.stream("GET", src) as res:
-                if res.status_code != 200:
+                if res.status_code >= 400:
                     return self.failures.append(f"{src} => {dst}")
                 num_bytes_downloaded = res.num_bytes_downloaded
                 dst_temp = dst + ".temp"
