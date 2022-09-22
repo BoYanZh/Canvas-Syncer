@@ -28,6 +28,7 @@ class AsyncSemClient:
             headers={"Authorization": f"Bearer {token}"},
             proxies=proxies,
             transport=httpx.AsyncHTTPTransport(retries=3),
+            follow_redirects=True,
         )
 
     async def downloadOne(self, src, dst):
