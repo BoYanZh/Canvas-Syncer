@@ -28,21 +28,29 @@ class AsyncSemClient:
             headers={"Authorization": f"Bearer {token}"},
             proxies=proxies,
             transport=httpx.AsyncHTTPTransport(retries=3),
+            follow_redirects=True,
         )
 
     async def downloadOne(self, src, dst):
         async with self.sem:
             async with self.client.stream("GET", src) as res:
-                if res.status_code != 200:
+                if res.status_code >= 400:
                     return self.failures.append(f"{src} => {dst}")
                 num_bytes_downloaded = res.num_bytes_downloaded
-                async with aiofiles.open(dst, "+wb") as f:
-                    async for chunk in res.aiter_bytes():
-                        await f.write(chunk)
-                        self.tqdm.update(
-                            res.num_bytes_downloaded - num_bytes_downloaded
-                        )
-                        num_bytes_downloaded = res.num_bytes_downloaded
+                dst_temp = dst + ".temp"
+                try:
+                    async with aiofiles.open(dst_temp, "+wb") as f:
+                        async for chunk in res.aiter_bytes():
+                            await f.write(chunk)
+                            self.tqdm.update(
+                                res.num_bytes_downloaded - num_bytes_downloaded
+                            )
+                            num_bytes_downloaded = res.num_bytes_downloaded
+                except Exception as e:
+                    print(e.__class__.__name__)
+                    os.remove(dst_temp)
+                    return
+                os.rename(dst_temp, dst)
 
     async def downloadMany(self, infos, totalSize=0):
         self.tqdm = tqdm(total=totalSize, unit="B", unit_scale=True)
@@ -74,7 +82,6 @@ class AsyncSemClient:
                 retryTimes += 1
                 if debugMode:
                     print(f"{e.__class__.__name__}. Retry. {retryTimes} times.")
-        return res
 
     async def head(self, *args, **kwargs):
         async with self.sem:
@@ -179,7 +186,9 @@ class CanvasSyncer:
     async def getCourseIdByCourseCodeHelper(self, page, lowerCourseCodes):
         res = {}
         url = f"{self.baseUrl}/courses?page={page}"
-        courses = await self.client.json(url, checkError=True, debug=self.config["debug"])
+        courses = await self.client.json(
+            url, checkError=True, debug=self.config["debug"]
+        )
         if not courses:
             return res
         for course in courses:
@@ -348,10 +357,17 @@ def initConfig():
         elif isinstance(defaultVal, list):
             defaultVal = " ".join((str(val) for val in defaultVal))
         defaultVal = str(defaultVal)
+        if defaultValOnMissing is not None:
+            defaultValOnRemove = defaultValOnMissing
+        else:
+            defaultValOnRemove = ""
         tipStr = f"(Default: {defaultVal})" if defaultVal else ""
-        res = input(f"{promptStr}{tipStr}: ").strip()
+        tipRemove = "(If you input remove, value will become " + (f"{defaultValOnRemove})" if defaultValOnRemove != "" else "empty)")
+        res = input(f"{promptStr}{tipStr}{tipRemove}: ").strip()
         if not res:
             res = defaultVal
+        elif res == "remove":
+            res = defaultValOnRemove
         return res
 
     print("Generating new config file...")
