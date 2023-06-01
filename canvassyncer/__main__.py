@@ -322,15 +322,15 @@ class CanvasSyncer:
     def checkAllowDownload(self, st):
         try:
             isAudio = (mimetypes.guess_type(st))[0].split("/")[0] == "audio"
-        except Exception as e:
+        except Exception:
             isAudio = False
         try:
             isVideo = mimetypes.guess_type(st)[0].split("/")[0] == "video"
-        except Exception as e:
+        except Exception:
             isVideo = False
         try:
             isImage = mimetypes.guess_type(st)[0].split("/")[0] == "image"
-        except Exception as e:
+        except Exception:
             isImage = False
         if (not isAudio) or (self.config["allowAudio"]):
             if (not isVideo) or (self.config["allowVideo"]):
