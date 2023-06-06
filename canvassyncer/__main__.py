@@ -13,7 +13,7 @@ import aiofiles
 import httpx
 from tqdm import tqdm
 
-__version__ = "2.0.10"
+__version__ = "2.0.11"
 CONFIG_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), ".canvassyncer.json"
 )
@@ -319,25 +319,29 @@ class CanvasSyncer:
                 print(f"{e.__class__.__name__}! Skipped: {path}")
         self.laterFiles = laterFiles
 
-    def checkAllowDownload(self, st):
-        try:
-            isAudio = (mimetypes.guess_type(st))[0].split("/")[0] == "audio"
-        except Exception:
-            isAudio = False
-        try:
-            isVideo = mimetypes.guess_type(st)[0].split("/")[0] == "video"
-        except Exception:
-            isVideo = False
-        try:
-            isImage = mimetypes.guess_type(st)[0].split("/")[0] == "image"
-        except Exception:
-            isImage = False
-        if (not isAudio) or (self.config["allowAudio"]):
-            if (not isVideo) or (self.config["allowVideo"]):
-                if (not isImage) or (self.config["allowImage"]):
-                    return True
-        print(f"remove {st} because of its file type.")
-        return False
+    def checkAllowDownload(self, filename):
+        type = (mimetypes.guess_type(filename))[0]
+        if type is None:
+            return True
+        if not self.config["allowAudio"]:
+            if type.split("/")[0] == "audio":
+                print(
+                    f"Remove {filename} from the download list because of its file type: audio."
+                )
+                return False
+        if not self.config["allowVideo"]:
+            if type.split("/")[0] == "video":
+                print(
+                    f"Remove {filename} the download list because of its file type: video."
+                )
+                return False
+        if not self.config["allowImage"]:
+            if type.split("/")[0] == "image":
+                print(
+                    f"Remove {filename} the download list because of its file type: image."
+                )
+                return False
+        return True
 
     def checkFilesType(self):
         self.laterFiles = [
