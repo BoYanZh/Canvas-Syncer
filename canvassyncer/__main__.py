@@ -320,23 +320,23 @@ class CanvasSyncer:
         self.laterFiles = laterFiles
 
     def checkAllowDownload(self, filename):
-        type = (mimetypes.guess_type(filename))[0]
-        if type is None:
+        fileType = (mimetypes.guess_type(filename))[0]
+        if fileType is None:
             return True
         if not self.config["allowAudio"]:
-            if type.split("/")[0] == "audio":
+            if fileType.split("/")[0] == "audio":
                 print(
                     f"Remove {filename} from the download list because of its file type: audio."
                 )
                 return False
         if not self.config["allowVideo"]:
-            if type.split("/")[0] == "video":
+            if fileType.split("/")[0] == "video":
                 print(
                     f"Remove {filename} the download list because of its file type: video."
                 )
                 return False
         if not self.config["allowImage"]:
-            if type.split("/")[0] == "image":
+            if fileType.split("/")[0] == "image":
                 print(
                     f"Remove {filename} the download list because of its file type: image."
                 )
