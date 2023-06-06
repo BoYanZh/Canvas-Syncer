@@ -512,6 +512,13 @@ def getConfig():
     config["connection_count"] = args.connection
     config["no_keep_older_version"] = args.no_keep_older_version
     config["debug"] = args.debug
+    if not "allowAudio" in config:
+        config["allowAudio"] = True
+    if not "allowVideo" in config:
+        config["allowVideo"] = True
+    if not "allowImage" in config:
+        config["allowImage"] = True
+
     return config
 
 
