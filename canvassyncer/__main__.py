@@ -8,7 +8,7 @@ import time
 import traceback
 import platform
 from datetime import datetime, timezone
-
+import mimetypes
 import aiofiles
 import httpx
 from tqdm import tqdm
@@ -298,7 +298,7 @@ class CanvasSyncer:
             return
         print(f"Start to download {len(self.laterInfo)} file(s)!")
         laterFiles = []
-        for (fileUrl, path) in self.laterFiles:
+        for fileUrl, path in self.laterFiles:
             localCreatedTimeStamp = int(os.path.getctime(path))
             try:
                 newPath = os.path.join(
@@ -319,6 +319,42 @@ class CanvasSyncer:
                 print(f"{e.__class__.__name__}! Skipped: {path}")
         self.laterFiles = laterFiles
 
+    def checkAllowDownload(self, filename):
+        fileType = (mimetypes.guess_type(filename))[0]
+        if fileType is None:
+            return True
+        if not self.config["allowAudio"]:
+            if fileType.split("/")[0] == "audio":
+                print(
+                    f"Remove {filename} from the download list because of its file type: audio."
+                )
+                return False
+        if not self.config["allowVideo"]:
+            if fileType.split("/")[0] == "video":
+                print(
+                    f"Remove {filename} the download list because of its file type: video."
+                )
+                return False
+        if not self.config["allowImage"]:
+            if fileType.split("/")[0] == "image":
+                print(
+                    f"Remove {filename} the download list because of its file type: image."
+                )
+                return False
+        return True
+
+    def checkFilesType(self):
+        self.laterFiles = [
+            (fileUrl, path)
+            for (fileUrl, path) in self.laterFiles
+            if self.checkAllowDownload(path)
+        ]
+        self.newFiles = [
+            (fileUrl, path)
+            for (fileUrl, path) in self.newFiles
+            if self.checkAllowDownload(path)
+        ]
+
     async def sync(self):
         print("Getting course IDs...")
         await self.getCourseID()
@@ -335,6 +371,7 @@ class CanvasSyncer:
             return print("All local files are synced!")
         self.checkNewFiles()
         self.checkLaterFiles()
+        self.checkFilesType()
         await self.client.downloadMany(
             self.newFiles + self.laterFiles, self.downloadSize + self.laterDownloadSize
         )
@@ -362,7 +399,9 @@ def initConfig():
         else:
             defaultValOnRemove = ""
         tipStr = f"(Default: {defaultVal})" if defaultVal else ""
-        tipRemove = "(If you input remove, value will become " + (f"{defaultValOnRemove})" if defaultValOnRemove != "" else "empty)")
+        tipRemove = "(If you input remove, value will become " + (
+            f"{defaultValOnRemove})" if defaultValOnRemove != "" else "empty)"
+        )
         res = input(f"{promptStr}{tipStr}{tipRemove}: ").strip()
         if not res:
             res = defaultVal
@@ -391,10 +430,23 @@ def initConfig():
     filesizeThreshStr = promptConfigStr(
         "Maximum file size to download(MB)", "filesizeThresh", defaultValOnMissing=250
     )
+    allowAudio = promptConfigStr(
+        "Whether allow downloading audios", "allowAudio", defaultValOnMissing=True
+    )
+    allowVideo = promptConfigStr(
+        "Whether allow downloading videos", "allowVideo", defaultValOnMissing=True
+    )
+    allowImage = promptConfigStr(
+        "Whether allow downloading images", "allowImage", defaultValOnMissing=True
+    )
+
     try:
         filesizeThresh = float(filesizeThreshStr)
     except Exception:
         filesizeThresh = 250
+    allowAudio = (allowAudio == "True") or (allowAudio == "true")
+    allowVideo = (allowVideo == "True") or (allowVideo == "true")
+    allowImage = (allowImage == "True") or (allowImage == "true")
     return {
         "canvasURL": url,
         "token": token,
@@ -402,6 +454,9 @@ def initConfig():
         "courseIDs": courseIDs,
         "downloadDir": downloadDir,
         "filesizeThresh": filesizeThresh,
+        "allowAudio": allowAudio,
+        "allowVideo": allowVideo,
+        "allowImage": allowImage,
     }
 
 
@@ -457,6 +512,13 @@ def getConfig():
     config["connection_count"] = args.connection
     config["no_keep_older_version"] = args.no_keep_older_version
     config["debug"] = args.debug
+    if not "allowAudio" in config:
+        config["allowAudio"] = True
+    if not "allowVideo" in config:
+        config["allowVideo"] = True
+    if not "allowImage" in config:
+        config["allowImage"] = True
+
     return config
 
 
