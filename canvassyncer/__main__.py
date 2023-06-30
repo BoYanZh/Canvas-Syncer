@@ -13,7 +13,7 @@ import aiofiles
 import httpx
 from tqdm import tqdm
 
-__version__ = "2.0.11"
+__version__ = "2.0.10"
 CONFIG_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), ".canvassyncer.json"
 )
