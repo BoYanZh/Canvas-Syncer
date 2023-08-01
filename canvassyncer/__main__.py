@@ -151,15 +151,24 @@ class CanvasSyncer:
     async def getCourseFoldersWithIDHelper(self, page, courseID):
         res = {}
         url = f"{self.baseUrl}/courses/{courseID}/folders?page={page}"
-        folders = await self.client.json(url, debug=self.config["debug"])
-        for folder in folders:
-            if folder["full_name"].startswith("course files"):
-                folder["full_name"] = folder["full_name"][len("course files") :]
-            res[folder["id"]] = folder["full_name"]
-            if not res[folder["id"]]:
-                res[folder["id"]] = "/"
-            res[folder["id"]] = re.sub(r"[\\\:\*\?\"\<\>\|]", "_", res[folder["id"]])
-        return res
+        retryTimes = 0
+        while retryTimes < 5:
+            try:
+                folders = await self.client.json(url, debug=self.config["debug"])
+                for folder in folders:
+                    if folder["full_name"].startswith("course files"):
+                        folder["full_name"] = folder["full_name"][len("course files") :]
+                    res[folder["id"]] = folder["full_name"]
+                    if not res[folder["id"]]:
+                        res[folder["id"]] = "/"
+                    res[folder["id"]] = re.sub(
+                        r"[\\\:\*\?\"\<\>\|]", "_", res[folder["id"]]
+                    )
+                return res
+            except Exception as e:
+                retryTimes = retryTimes + 1
+                if self.config["debug"]:
+                    print(str(retryTimes) + " time(s) error: " + str(e))
 
     async def getCourseFilesHelper(self, page, courseID, folders):
         files = {}
