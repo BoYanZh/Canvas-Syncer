@@ -4,7 +4,7 @@
 [![CodeFactor](https://www.codefactor.io/repository/github/boyanzh/canvas-syncer/badge)](https://www.codefactor.io/repository/github/boyanzh/canvas-syncer)
 [![PyPi Version](https://img.shields.io/pypi/v/canvassyncer)](https://pypi.org/pypi/canvassyncer)
 
-An async python script that synchronizes files and folders across Canvas Files and local, with extremely fast speed.
+An async python script that synchronizes files and folders across Canvas LMS Files and local, with extremely fast speed.
 
 ## Installation
 
