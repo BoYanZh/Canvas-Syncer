@@ -19,3 +19,4 @@ __pycache__
 courses/
 upload.sh
 dist.py
+*.json
