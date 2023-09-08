@@ -66,7 +66,6 @@ class AsyncSemClient:
 
     async def json(self, *args, **kwargs):
         retryTimes = 0
-        retryTimes = 0
         checkError = bool(kwargs.pop("checkError", False))
         debugMode = bool(kwargs.pop("debug", False))
         while retryTimes <= 5:
