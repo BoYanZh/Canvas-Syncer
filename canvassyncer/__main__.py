@@ -98,11 +98,14 @@ class AsyncSemClient:
         courseMapTerm = {}
         termMapDisplayname = {}
         for i in res:
-            courseId = i["id"]
-            termId = i["enrollment_term_id"]
-            termName = i["term"]["name"]
-            courseMapTerm[courseId] = termId
-            termMapDisplayname[termId] = termName
+            try:
+                courseId = i["id"]
+                termId = i["enrollment_term_id"]
+                termName = i["term"]["name"]
+                courseMapTerm[courseId] = termId
+                termMapDisplayname[termId] = termName
+            except Exception:
+                print("get data error in" + str(i))
         return (courseMapTerm, termMapDisplayname)
 
 
@@ -129,7 +132,18 @@ class CanvasSyncer:
             os.mkdir(self.downloadDir)
 
     async def getCourseList(self):
-        return await self.client.getCourseList(f"{self.baseUrl}/courses?include[]=term")
+        courseMapTerm = {}
+        termMapDisplayname = {}
+        i = 0
+        while True:
+            i += 1
+            res = await self.client.getCourseList(
+                f"{self.baseUrl}/courses?include[]=term&page={i}"
+            )
+            courseMapTerm.update(res[0])
+            termMapDisplayname.update(res[1])
+            if res == ({}, {}):
+                return (courseMapTerm, termMapDisplayname)
 
     async def aclose(self):
         await self.client.aclose()
