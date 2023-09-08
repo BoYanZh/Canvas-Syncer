@@ -269,7 +269,7 @@ class CanvasSyncer:
         else:
             path = os.path.join(path, f"{self.courseCode[courseID]}{fileName}")
         path = path.replace("\\", "/").replace("//", "/")
-        if fileName in localFiles and fileModifiedTimeStamp <= os.path.getctime(path) and os.path.getsize(path) == fileName:
+        if fileName in localFiles and fileModifiedTimeStamp <= os.path.getctime(path):
             return
         response = await self.client.head(fileUrl)
         fileSize = int(response.get("content-length", 0))
