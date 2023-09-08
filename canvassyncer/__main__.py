@@ -98,11 +98,14 @@ class AsyncSemClient:
         courseMapTerm = {}
         termMapDisplayname = {}
         for i in res:
-            courseId = i["id"]
-            termId = i["enrollment_term_id"]
-            termName = i["term"]["name"]
-            courseMapTerm[courseId] = termId
-            termMapDisplayname[termId] = termName
+            try:
+                courseId = i["id"]
+                termId = i["enrollment_term_id"]
+                termName = i["term"]["name"]
+                courseMapTerm[courseId] = termId
+                termMapDisplayname[termId] = termName
+            except Exception:
+                print("get data error in" + str(i))
         return (courseMapTerm, termMapDisplayname)
 
 
@@ -125,12 +128,23 @@ class CanvasSyncer:
         self.totalFileCount = 0
         self.__courseMapTerm = {}
         self.__termMapDisplayname = {}
-        self.droppedCourse = {"courseIDs":[], "courseCodes":[]}
+        self.droppedCourse = {"courseIDs": [], "courseCodes": []}
         if not os.path.exists(self.downloadDir):
             os.mkdir(self.downloadDir)
 
     async def getCourseList(self):
-        return await self.client.getCourseList(f"{self.baseUrl}/courses?include[]=term")
+        courseMapTerm = {}
+        termMapDisplayname = {}
+        i = 0
+        while True:
+            i += 1
+            res = await self.client.getCourseList(
+                f"{self.baseUrl}/courses?include[]=term&page={i}"
+            )
+            courseMapTerm.update(res[0])
+            termMapDisplayname.update(res[1])
+            if res == ({}, {}):
+                return (courseMapTerm, termMapDisplayname)
 
     async def aclose(self):
         await self.client.aclose()
@@ -152,8 +166,10 @@ class CanvasSyncer:
             for i in self.courseCode:
                 correctCourseCode.append(self.courseCode[i])
             for i in self.config["courseCodes"]:
-                if (i not in correctCourseCode) and (i not in self.droppedCourse["courseCodes"]):
-                    print("course with course code",i,"might be dropped!")
+                if (i not in correctCourseCode) and (
+                    i not in self.droppedCourse["courseCodes"]
+                ):
+                    print("course with course code", i, "might be dropped!")
                     self.droppedCourse["courseCodes"].append(i)
         return res
 
@@ -244,8 +260,10 @@ class CanvasSyncer:
     async def getCourseCodeByCourseIDHelper(self, courseID):
         url = f"{self.baseUrl}/courses/{courseID}"
         clientRes = await self.client.json(url, debug=self.config["debug"])
-        if ("id" not in clientRes.keys()) and (courseID not in self.droppedCourse["courseIDs"]):
-            print("Course with course ID",courseID,"might be dropped!")
+        if ("id" not in clientRes.keys()) and (
+            courseID not in self.droppedCourse["courseIDs"]
+        ):
+            print("Course with course ID", courseID, "might be dropped!")
             self.droppedCourse["courseIDs"].append(courseID)
         if clientRes.get("course_code") is None:
             return
