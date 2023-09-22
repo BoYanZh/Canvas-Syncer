@@ -97,16 +97,19 @@ class AsyncSemClient:
         res = resp.json()
         courseMapTerm = {}
         termMapDisplayname = {}
+        IdMapCode = {}
         for i in res:
             try:
                 courseId = i["id"]
                 termId = i["enrollment_term_id"]
                 termName = i["term"]["name"]
+                courseCode = i["course_code"]
+                IdMapCode[courseId] = courseCode
                 courseMapTerm[courseId] = termId
                 termMapDisplayname[termId] = termName
             except Exception:
                 print("get data error in" + str(i))
-        return (courseMapTerm, termMapDisplayname)
+        return (courseMapTerm, termMapDisplayname, IdMapCode)
 
 
 class CanvasSyncer:
@@ -135,6 +138,7 @@ class CanvasSyncer:
     async def getCourseList(self):
         courseMapTerm = {}
         termMapDisplayname = {}
+        IdMapCode = {}
         i = 0
         while True:
             i += 1
@@ -143,8 +147,9 @@ class CanvasSyncer:
             )
             courseMapTerm.update(res[0])
             termMapDisplayname.update(res[1])
-            if res == ({}, {}):
-                return (courseMapTerm, termMapDisplayname)
+            IdMapCode.update(res[2])
+            if res == ({}, {}, {}):
+                return (courseMapTerm, termMapDisplayname, IdMapCode)
 
     async def aclose(self):
         await self.client.aclose()
@@ -418,7 +423,13 @@ class CanvasSyncer:
     async def sync(self):
         print("Getting course IDs...")
         await self.getCourseID()
-        (self.__courseMapTerm, self.__termMapDisplayname) = await self.getCourseList()
+        (
+            self.__courseMapTerm,
+            self.__termMapDisplayname,
+            IdMapCode,
+        ) = await self.getCourseList()
+        if self.config["downloadAll"]:
+            self.courseCode = IdMapCode
         print(f"Get {len(self.courseCode)} available courses!")
         print("Finding files on canvas...")
         await asyncio.gather(
@@ -550,6 +561,7 @@ def getConfig():
         help="do not keep older version",
         action="store_true",
     )
+    parser.add_argument("-a", "--all", help="download all courses", action="store_true")
     args = parser.parse_args()
     configPath = args.path
     if args.r or not os.path.exists(configPath):
@@ -573,6 +585,7 @@ def getConfig():
     config["connection_count"] = args.connection
     config["no_keep_older_version"] = args.no_keep_older_version
     config["debug"] = args.debug
+    config["downloadAll"] = args.all
     if not "allowAudio" in config:
         config["allowAudio"] = True
     if not "allowVideo" in config:
