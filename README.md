@@ -59,6 +59,7 @@ Optional arguments:
   -d, --debug           show debug information
   --no-keep-older-version
                         do not keep older version
+  -a, --all             download all courses
 ```
 
 ### How to get your token?
