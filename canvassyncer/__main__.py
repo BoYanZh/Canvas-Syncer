@@ -110,6 +110,7 @@ class CanvasSyncer:
         self.laterInfo = []
         self.skipfiles = []
         self.totalFileCount = 0
+        self.droppedCourse = {"courseIDs":[], "courseCodes":[]}
         if not os.path.exists(self.downloadDir):
             os.mkdir(self.downloadDir)
 
@@ -129,6 +130,13 @@ class CanvasSyncer:
                     endOfPage = True
                 res.update(item)
             page += PAGES_PER_TIME
+            correctCourseCode = []
+            for i in self.courseCode:
+                correctCourseCode.append(self.courseCode[i])
+            for i in self.config["courseCodes"]:
+                if (i not in correctCourseCode) and (i not in self.droppedCourse["courseCodes"]):
+                    print("course with course code",i,"might be dropped!")
+                    self.droppedCourse["courseCodes"].append(i)
         return res
 
     def prepareLocalFiles(self, courseID, folders):
@@ -216,6 +224,9 @@ class CanvasSyncer:
     async def getCourseCodeByCourseIDHelper(self, courseID):
         url = f"{self.baseUrl}/courses/{courseID}"
         clientRes = await self.client.json(url, debug=self.config["debug"])
+        if ("id" not in clientRes.keys()) and (courseID not in self.droppedCourse["courseIDs"]):
+            print("Course with course ID",courseID,"might be dropped!")
+            self.droppedCourse["courseIDs"].append(courseID)
         if clientRes.get("course_code") is None:
             return
         self.courseCode[courseID] = clientRes["course_code"]
