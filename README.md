@@ -14,13 +14,13 @@ You may use one of the following
 
 For Windows users, you can find binary(.exe) file here: <https://github.com/BoYanZh/Canvas-Syncer/releases>. Unzip it and double click `canvassyncer.exe` file to run, or calling it in shell.
 
-### Through `pip`
+### Through `pipx`
 
 ```bash
-pip3 install -U canvassyncer
+pipx install -U canvassyncer
 ```
 
-If you have not installed `pip` yet, you may refer to <https://pip.pypa.io/en/stable/installing/> or the search engine to get your `pip`.
+If you have not installed `pipx` yet, you may refer to <https://pipx.pypa.io/stable/> or the search engine to get your `pipx`.
 
 ### From Source
 

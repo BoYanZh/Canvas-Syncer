@@ -1,14 +1,15 @@
 import argparse
 import asyncio
 import json
+import mimetypes
 import ntpath
 import os
+import platform
 import re
 import time
 import traceback
-import platform
 from datetime import datetime, timezone
-import mimetypes
+
 import aiofiles
 import httpx
 from tqdm import tqdm
@@ -21,12 +22,12 @@ PAGES_PER_TIME = 8
 
 
 class AsyncSemClient:
-    def __init__(self, connectionCount, token, proxies):
+    def __init__(self, connectionCount, token, proxy):
         self.sem = asyncio.Semaphore(connectionCount)
         self.client = httpx.AsyncClient(
             timeout=5,
             headers={"Authorization": f"Bearer {token}"},
-            proxies=proxies,
+            proxy=proxy,
             transport=httpx.AsyncHTTPTransport(retries=3),
             follow_redirects=True,
         )
@@ -96,7 +97,7 @@ class CanvasSyncer:
     def __init__(self, config):
         self.config = config
         self.client = AsyncSemClient(
-            config["connection_count"], config["token"], config.get("proxies")
+            config["connection_count"], config["token"], config.get("proxy")
         )
         self.downloadSize = 0
         self.laterDownloadSize = 0
@@ -516,7 +517,7 @@ def getConfig():
             exit(1)
     config = json.load(open(configPath, mode="r", encoding="utf-8"))
     config["y"] = args.y
-    config["proxies"] = args.proxy
+    config["proxy"] = args.proxy
     config["no_subfolder"] = args.no_subfolder
     config["connection_count"] = args.connection
     config["no_keep_older_version"] = args.no_keep_older_version
