@@ -17,7 +17,7 @@ jobs:
         spec: canvassyncer/build.spec
 
     - name: Upload Artifact
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: canvassyncer-win
         path: dist/windows/canvassyncer.exe
