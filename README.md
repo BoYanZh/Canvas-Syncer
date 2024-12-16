@@ -17,7 +17,7 @@ For Windows users, you can find binary(.exe) file here: <https://github.com/BoYa
 ### Through `pipx`
 
 ```bash
-pipx install -U canvassyncer
+pipx install canvassyncer
 ```
 
 If you have not installed `pipx` yet, you may refer to <https://pipx.pypa.io/stable/> or the search engine to get your `pipx`.
