@@ -92,6 +92,23 @@ class AsyncSemClient:
     async def aclose(self):
         await self.client.aclose()
 
+    async def getCourseList(self, *args, **kwargs):
+        async with self.sem:
+            resp = await self.client.get(*args, **kwargs)
+        res = resp.json()
+        courseMapTerm = {}
+        termMapDisplayname = {}
+        for i in res:
+            try:
+                courseId = i["id"]
+                termId = i["enrollment_term_id"]
+                termName = i["term"]["name"]
+                courseMapTerm[courseId] = termId
+                termMapDisplayname[termId] = termName
+            except Exception:
+                print("get data error in" + str(i))
+        return (courseMapTerm, termMapDisplayname)
+
 
 class CanvasSyncer:
     def __init__(self, config):
@@ -110,8 +127,24 @@ class CanvasSyncer:
         self.laterInfo = []
         self.skipfiles = []
         self.totalFileCount = 0
+        self.__courseMapTerm = {}
+        self.__termMapDisplayname = {}
         if not os.path.exists(self.downloadDir):
             os.mkdir(self.downloadDir)
+
+    async def getCourseList(self):
+        courseMapTerm = {}
+        termMapDisplayname = {}
+        i = 0
+        while True:
+            i += 1
+            res = await self.client.getCourseList(
+                f"{self.baseUrl}/courses?include[]=term&page={i}"
+            )
+            courseMapTerm.update(res[0])
+            termMapDisplayname.update(res[1])
+            if res == ({}, {}):
+                return (courseMapTerm, termMapDisplayname)
 
     async def aclose(self):
         await self.client.aclose()
@@ -134,12 +167,14 @@ class CanvasSyncer:
     def prepareLocalFiles(self, courseID, folders):
         localFiles = []
         for folder in folders.values():
+            path = os.path.join(
+                self.downloadDir,
+                self.__termMapDisplayname[self.__courseMapTerm[courseID]],
+            )
             if self.config["no_subfolder"]:
-                path = os.path.join(self.downloadDir, folder[1:])
+                path = os.path.join(path, folder[1:])
             else:
-                path = os.path.join(
-                    self.downloadDir, f"{self.courseCode[courseID]}{folder}"
-                )
+                path = os.path.join(path, f"{self.courseCode[courseID]}{folder}")
             if not os.path.exists(path):
                 os.makedirs(path)
             localFiles += [
@@ -241,12 +276,13 @@ class CanvasSyncer:
     ):
         if not fileUrl:
             return
+        path = os.path.join(
+            self.downloadDir, self.__termMapDisplayname[self.__courseMapTerm[courseID]]
+        )
         if self.config["no_subfolder"]:
-            path = os.path.join(self.downloadDir, fileName[1:])
+            path = os.path.join(path, fileName[1:])
         else:
-            path = os.path.join(
-                self.downloadDir, f"{self.courseCode[courseID]}{fileName}"
-            )
+            path = os.path.join(path, f"{self.courseCode[courseID]}{fileName}")
         path = path.replace("\\", "/").replace("//", "/")
         if fileName in localFiles and fileModifiedTimeStamp <= os.path.getctime(path):
             return
@@ -368,6 +404,7 @@ class CanvasSyncer:
     async def sync(self):
         print("Getting course IDs...")
         await self.getCourseID()
+        (self.__courseMapTerm, self.__termMapDisplayname) = await self.getCourseList()
         print(f"Get {len(self.courseCode)} available courses!")
         print("Finding files on canvas...")
         await asyncio.gather(
